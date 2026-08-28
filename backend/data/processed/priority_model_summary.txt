@@ -1,0 +1,120 @@
+
+============================================================
+PRIORITY MODEL SUMMARY
+============================================================
+
+📅 CREATED: 2026-08-24 01:05:15
+
+============================================================
+1. DATASET INFORMATION
+============================================================
+
+Total samples: 1290
+  - High (0):   724 (56.1%)
+  - Low (1):    241 (18.7%)
+  - Medium (2): 325 (25.2%)
+
+Source: balanced_sentiment_data.csv (1200 samples) + 90 REAL LOW tickets
+
+============================================================
+2. CLUSTERING INFORMATION
+============================================================
+
+Number of clusters: 20
+Method: KMeans (random_state=42, n_init=10)
+Vectorizer: TfidfVectorizer (max_features=3000)
+
+Reason for 20 clusters:
+  - Original used 50 clusters → Overfitting (100% accuracy)
+  - Reduced to 20 clusters → More stable (98.84% CV accuracy)
+  - Each cluster has ~60 samples (better generalization)
+
+============================================================
+3. MANUAL RELABELING
+============================================================
+
+Each of the 20 clusters was manually labeled by the user:
+  0 = High Priority
+  1 = Low Priority
+  2 = Medium Priority
+
+This was done by reviewing sample texts from each cluster and
+assigning the appropriate priority label based on content.
+
+============================================================
+4. LOW TICKETS ADDED
+============================================================
+
+Number of REAL LOW tickets added: 90
+Source: Manually created based on real-world low priority patterns
+
+Examples of LOW tickets:
+  - "UI suggestion: It would be nice to have dark mode in the future"
+  - "Feedback: The dashboard could use more visual charts, but not urgent"
+  - "Suggestion: Add tooltips for better UX, low priority"
+
+============================================================
+5. MODEL INFORMATION
+============================================================
+
+Algorithm: Logistic Regression
+Parameters:
+  - C: 0.5
+  - max_iter: 1000
+  - class_weight: 'balanced'
+  - random_state: 42
+
+Vectorizer: TfidfVectorizer
+Parameters:
+  - max_features: 3000
+  - ngram_range: (1, 2)
+  - stop_words: 'english'
+  - min_df: 3
+  - max_df: 0.8
+
+Encoder: LabelEncoder
+Classes: ['High', 'Low', 'Medium']
+
+============================================================
+6. PERFORMANCE
+============================================================
+
+Cross-Validation: 5-Fold StratifiedKFold (random_state=42)
+CV Scores: [1.0000, 0.9922, 0.9729, 0.9884, 0.9884]
+
+Mean CV Accuracy: 0.9884 (98.84%)
+Std CV Accuracy: 0.0088 (0.88%)
+
+============================================================
+7. COMPARISON WITH PREVIOUS MODEL
+============================================================
+
+| Metric           | Previous (50 Clusters) | Current (20 Clusters) |
+|------------------|------------------------|-----------------------|
+| Clusters         | 50                     | 20                    |
+| Overfitting      | Yes (100% accuracy)    | No (98.84% CV)        |
+| Model            | XGBoost                | Logistic Regression   |
+| Stability        | Low                    | High                  |
+| Samples/cluster  | ~24                    | ~60                   |
+
+============================================================
+8. FILES
+============================================================
+
+- priority_final_data_real_low.csv   : Final dataset (1290 samples)
+- priority_model_final.pkl           : Logistic Regression model
+- priority_vectorizer_final.pkl      : TfidfVectorizer
+- priority_encoder.pkl               : LabelEncoder
+
+============================================================
+9. NEXT STEPS
+============================================================
+
+1. Integrate with FastAPI backend
+2. Test with real-world tickets
+3. Monitor performance and retrain if needed
+4. Add more LOW tickets if necessary
+
+============================================================
+END OF SUMMARY
+============================================================
