@@ -1,0 +1,28 @@
+# backend/.flake8
+[flake8]
+max-line-length = 120
+extend-ignore =
+
+    W291,W293,W292,E402
+
+exclude =
+    .git,
+    .venv,
+    __pycache__,
+    build,
+    dist,
+    models,
+    data,
+    logs,
+    htmlcov,
+    .pytest_cache,
+    scripts,
+    tests,
+    docker
+
+per-file-ignores =
+    # Allow imports at top level in main files
+    app/main.py: E402
+    app/rag/api.py: E402
+
+max-complexity = 15

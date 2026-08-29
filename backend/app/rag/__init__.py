@@ -3,7 +3,7 @@
 RAG Package - Retrieval Augmented Generation
 """
 
-from app.rag.service import get_rag, RAGService
+from app.rag.service import RAGService, get_rag
 
 __all__ = [
     "get_rag",

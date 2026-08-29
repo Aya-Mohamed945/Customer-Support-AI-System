@@ -3,33 +3,29 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
+# Install system dependencies with retry
+RUN apt-get update -o Acquire::Check-Valid-Until=false && \
+    apt-get install -y --no-install-recommends \
     build-essential \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements
+# Copy requirements first (for better caching)
 COPY requirements.txt .
 COPY requirements-dev.txt .
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
-
-# ============================================
-# ✅ Pre-download the embedding model
-# ============================================
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('paraphrase-MiniLM-L3-v2')"
+# ✅ Install with extended timeout and retries
+RUN pip install --no-cache-dir --timeout 600 --retries 20 -r requirements.txt
 
 # Copy application code
 COPY . .
 
-# Create directories
+# Create directories for models and data
 RUN mkdir -p models data/processed logs
 
 # Environment variables
 ENV HF_HUB_ENABLE_HF_TRANSFER=0
-ENV HF_HUB_DOWNLOAD_TIMEOUT=300
+ENV HF_HUB_DOWNLOAD_TIMEOUT=600
 ENV PYTHONUNBUFFERED=1
 ENV LOG_LEVEL=INFO
 

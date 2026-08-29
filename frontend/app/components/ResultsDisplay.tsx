@@ -1,7 +1,7 @@
 // frontend/app/components/ResultsDisplay.tsx
 'use client';
 
-import { PredictionResponse } from '../types';  // ✅ من types مش api
+import { PredictionResponse } from '../types';
 
 interface ResultsDisplayProps {
   result: PredictionResponse | null;
@@ -107,8 +107,8 @@ export default function ResultsDisplay({ result }: ResultsDisplayProps) {
             </div>
             <div className="space-y-2.5">
               {result.rag_results.map((faq, index) => (
-                <div 
-                  key={index} 
+                <div
+                  key={index}
                   className="p-3.5 rounded-xl bg-white/5 border border-white/5 hover:bg-white/10 hover:border-white/10 transition-all duration-300"
                 >
                   <div className="flex items-start gap-3">

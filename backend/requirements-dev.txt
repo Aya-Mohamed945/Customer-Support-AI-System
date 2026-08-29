@@ -1,10 +1,22 @@
-#requirements-dev.txt
-
+# backend/requirements-dev.txt
 -r requirements.txt
 
+# Code Quality
 black==23.11.0
 isort==5.12.0
 flake8==6.1.0
+flake8-bugbear==23.11.0
+flake8-comprehensions==3.14.0
+flake8-docstrings==1.7.0
+flake8-pyproject==1.2.3
+pep8-naming==0.13.3
+
+# Type Checking
 mypy==1.7.0
+
+# Pre-commit
 pre-commit==3.5.0
+
+# Testing
 pytest-xdist==3.5.0
+pytest-timeout==2.2.0

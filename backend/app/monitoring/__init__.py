@@ -3,7 +3,7 @@
 Monitoring Package - Metrics Collection
 """
 
-from app.monitoring.metrics import get_metrics, MetricsCollector
+from app.monitoring.metrics import MetricsCollector, get_metrics
 
 __all__ = [
     "get_metrics",

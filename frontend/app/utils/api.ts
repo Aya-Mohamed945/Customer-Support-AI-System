@@ -3,7 +3,6 @@ import { PredictionRequest, PredictionResponse, User } from '../types';
 
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
-// ✅ إعادة تصدير الأنواع من هنا عشان الملفات اللي بتستخدم api.ts تشتغل
 export type { PredictionResponse, User };
 
 const getAuthHeaders = () => {

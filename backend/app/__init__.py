@@ -3,7 +3,7 @@
 Utilities Package - Logging & Helpers
 """
 
-from app.utils.logger import setup_logging, get_logger
+from app.utils.logger import get_logger, setup_logging
 
 __all__ = [
     "setup_logging",
