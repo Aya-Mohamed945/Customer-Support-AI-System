@@ -1,7 +1,10 @@
 // frontend/app/utils/api.ts
-import { PredictionRequest, PredictionResponse } from '../types';
+import { PredictionRequest, PredictionResponse, User } from '../types';
 
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+// ✅ إعادة تصدير الأنواع من هنا عشان الملفات اللي بتستخدم api.ts تشتغل
+export type { PredictionResponse, User };
 
 const getAuthHeaders = () => {
   const token = typeof window !== 'undefined' ? sessionStorage.getItem('token') : null;

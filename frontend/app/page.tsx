@@ -1,219 +1,124 @@
 // frontend/app/page.tsx
-
 'use client';
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { Sparkles, BrainCircuit, History, LogOut, LayoutDashboard } from 'lucide-react';
 import TicketForm from './components/TicketForm';
 import ResultsDisplay from './components/ResultsDisplay';
 import LoadingSkeleton from './components/ui/LoadingSkeleton';
 import Toast from './components/ui/Toast';
-import { predictTicket, PredictionResponse } from './utils/api';
-
-interface User {
-  name: string;
-  email: string;
-  role: string;
-}
+import { predictTicket } from './utils/api';
+import { PredictionResponse, User, ToastData } from './types';  // ✅ من types
 
 export default function Home() {
   const router = useRouter();
   const [result, setResult] = useState<PredictionResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const [pageLoading, setPageLoading] = useState(true);
+  const [toast, setToast] = useState<ToastData | null>(null);
 
   useEffect(() => {
-    const checkAuth = () => {
-      const token = sessionStorage.getItem('token');
-      const userData = sessionStorage.getItem('user');
-      
-      if (!token) {
-        router.push('/login');
-        return;
-      }
-
-      if (userData) {
-        try {
-          setUser(JSON.parse(userData));
-        } catch {
-          sessionStorage.removeItem('token');
-          sessionStorage.removeItem('user');
-          router.push('/login');
-        }
-      } else {
-        sessionStorage.removeItem('token');
-        sessionStorage.removeItem('user');
-        router.push('/login');
-      }
-      
-      setLoading(false);
-    };
-
-    checkAuth();
+    const token = sessionStorage.getItem('token');
+    const userData = sessionStorage.getItem('user');
+    if (!token || !userData) {
+      router.push('/login');
+      return;
+    }
+    try {
+      setUser(JSON.parse(userData));
+    } catch {
+      router.push('/login');
+    } finally {
+      setPageLoading(false);
+    }
   }, [router]);
 
   const handleLogout = () => {
-    sessionStorage.removeItem('token');
-    sessionStorage.removeItem('user');
+    sessionStorage.clear();
     router.push('/login');
   };
 
   const handleSubmit = async (data: { title: string; description: string; resolution_time?: number }) => {
     setIsLoading(true);
-    setError(null);
     setResult(null);
-
     try {
-      const userData = sessionStorage.getItem('user');
-      const user = userData ? JSON.parse(userData) : null;
-      
       const response = await predictTicket({
         ...data,
-        user_id: user?.email || 'anonymous',
+        user_id: user?.email || 'anonymous'
       });
       setResult(response);
       setToast({ message: '✅ Ticket analyzed successfully!', type: 'success' });
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'An error occurred';
-      setError(errorMsg);
-      setToast({ message: `❌ ${errorMsg}`, type: 'error' });
+      setToast({ message: errorMsg, type: 'error' });
     } finally {
       setIsLoading(false);
     }
   };
 
-  if (loading) {
+  if (pageLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="relative w-12 h-12">
-            <div className="absolute inset-0 rounded-full border-3 border-white/5" />
-            <div className="absolute inset-0 rounded-full border-3 border-t-transparent border-primary-400 animate-spin" />
-          </div>
-          <p className="text-sm text-white/30">Loading...</p>
-        </div>
+      <div className="min-h-screen flex items-center justify-center bg-[#0b0f19]">
+        <div className="w-10 h-10 border-4 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen py-8 sm:py-12 px-4">
-      {toast && (
-        <Toast
-          message={toast.message}
-          type={toast.type}
-          onClose={() => setToast(null)}
-        />
-      )}
+    <div className="min-h-screen py-10 px-4 sm:py-16 flex items-center justify-center bg-[#0b0f19]">
+      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
-      <div className="max-w-3xl mx-auto">
-        {/* ============================================
-            HEADER - Minimal & Clean
-            ============================================ */}
-        <header className="text-center mb-10 animate-fade-up">
-          {/* Brand */}
-          <div className="inline-flex items-center gap-2.5 mb-4">
-            <div className="w-9 h-9 rounded-xl gradient-bg flex items-center justify-center shadow-lg">
-              <svg 
-                className="w-5 h-5 text-white" 
-                fill="none" 
-                stroke="currentColor" 
-                viewBox="0 0 24 24"
-                aria-hidden="true"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-              </svg>
-            </div>
-            <span className="text-lg font-bold text-white/90">Support<span className="gradient-text">AI</span></span>
+      <div className="max-w-5xl mx-auto w-full">
+        {/* Header Section */}
+        <div className="text-center mb-10 animate-fade-in-up">
+          <div className="inline-flex items-center justify-center w-20 h-20 rounded-3xl bg-gradient-to-br from-blue-500 to-purple-500 shadow-2xl shadow-indigo-500/20 mb-6 relative group">
+            <div className="absolute inset-0 rounded-3xl bg-white/10 blur-xl group-hover:blur-2xl transition-all" />
+            <BrainCircuit className="w-10 h-10 text-white relative z-10" />
           </div>
 
-          {/* Title */}
-          <h1 className="heading-hero text-white/95">
-            Ticket Intelligence
+          <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-white">
+            Customer Support <span className="bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">AI</span>
           </h1>
-          <p className="mt-2 text-sm text-white/40 max-w-lg mx-auto">
-            Paste your support ticket and let AI analyze, categorize, and suggest solutions instantly.
+          <p className="mt-3 text-lg text-white/60 font-light max-w-2xl mx-auto leading-relaxed">
+            Fast, accurate ticket classification and RAG-powered solution generation for higher efficiency.
           </p>
 
-          {/* User & Navigation */}
-          <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
-            {user && (
-              <span className="text-xs text-white/30">
-                {user.name} <span className="text-white/20">·</span> {user.role}
-              </span>
-            )}
-            
-            <div className="flex items-center gap-1.5">
-              <Link
-                href="/history"
-                className="px-3 py-1.5 text-xs font-medium text-white/40 hover:text-white/70 bg-white/5 hover:bg-white/10 rounded-full border border-white/5 hover:border-white/10 transition-all duration-300"
-              >
-                History
+          {/* User Capsule */}
+          <div className="mt-6 inline-flex items-center gap-3.5 px-5 py-2.5 rounded-full bg-white/5 border border-white/10 backdrop-blur-md">
+            {user && <span className="text-white/90 text-sm font-semibold">👤 {user.name}</span>}
+            <span className="w-px h-4 bg-white/15" />
+            <button onClick={handleLogout} className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 font-semibold transition-colors">
+              <LogOut className="w-3.5 h-3.5" /> Logout
+            </button>
+          </div>
+
+          {/* Navigation Links */}
+          <div className="mt-4 flex justify-center gap-3">
+            <Link href="/history" className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold text-white/80 bg-white/5 hover:bg-white/10 rounded-full border border-white/10 transition-all">
+              <History className="w-3.5 h-3.5" /> My History
+            </Link>
+            {user?.role === 'admin' && (
+              <Link href="/dashboard" className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold text-white/80 bg-white/5 hover:bg-white/10 rounded-full border border-white/10 transition-all">
+                <LayoutDashboard className="w-3.5 h-3.5" /> Dashboard
               </Link>
-              {user?.role === 'admin' && (
-                <Link
-                  href="/dashboard"
-                  className="px-3 py-1.5 text-xs font-medium text-white/40 hover:text-white/70 bg-white/5 hover:bg-white/10 rounded-full border border-white/5 hover:border-white/10 transition-all duration-300"
-                >
-                  Dashboard
-                </Link>
-              )}
-              <button
-                onClick={handleLogout}
-                className="px-3 py-1.5 text-xs font-medium text-white/20 hover:text-white/50 bg-white/5 hover:bg-white/10 rounded-full border border-white/5 hover:border-white/10 transition-all duration-300"
-              >
-                Logout
-              </button>
-            </div>
+            )}
           </div>
-        </header>
+        </div>
 
-        {/* ============================================
-            MAIN FORM
-            ============================================ */}
-        <section className="glass rounded-2xl p-6 sm:p-8 animate-fade-up delay-2">
-          {isLoading ? (
-            <LoadingSkeleton />
-          ) : (
-            <TicketForm onSubmit={handleSubmit} isLoading={isLoading} />
-          )}
-        </section>
+        {/* Ticket Form Container */}
+        <div className="rounded-3xl p-6 sm:p-10 border border-white/10 shadow-2xl shadow-indigo-950/5 backdrop-blur-2xl transition-all duration-300 hover:border-white/15 bg-white/5">
+          <TicketForm onSubmit={handleSubmit} isLoading={isLoading} />
+        </div>
 
-        {/* ============================================
-            ERROR
-            ============================================ */}
-        {error && !toast && (
-          <div className="mt-5 p-4 bg-danger/10 backdrop-blur-sm border border-danger/15 rounded-xl text-danger/80 text-sm animate-fade-up">
-            <div className="flex items-start gap-3">
-              <svg className="w-4 h-4 text-danger/60 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <span>{error}</span>
-            </div>
-          </div>
-        )}
-
-        {/* ============================================
-            RESULTS
-            ============================================ */}
+        {/* Prediction Results Container */}
         {result && (
-          <div className="mt-8 animate-fade-up delay-3">
+          <div className="mt-8 animate-slide-in-right">
             <ResultsDisplay result={result} />
           </div>
         )}
-
-        {/* ============================================
-            FOOTER
-            ============================================ */}
-        <footer className="mt-12 text-center">
-          <p className="text-[10px] text-white/10 font-light tracking-widest">
-            ⚡ FastAPI · XGBoost · RAG · Next.js
-          </p>
-        </footer>
       </div>
     </div>
   );

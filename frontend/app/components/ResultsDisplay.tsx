@@ -1,8 +1,7 @@
 // frontend/app/components/ResultsDisplay.tsx
-
 'use client';
 
-import { PredictionResponse } from '../utils/api';
+import { PredictionResponse } from '../types';  // ✅ من types مش api
 
 interface ResultsDisplayProps {
   result: PredictionResponse | null;
@@ -12,16 +11,16 @@ export default function ResultsDisplay({ result }: ResultsDisplayProps) {
   if (!result) return null;
 
   const priorityConfig = {
-    High: { color: 'badge-priority-high', icon: '🔴', label: 'High' },
-    Medium: { color: 'badge-priority-medium', icon: '🟡', label: 'Medium' },
-    Low: { color: 'badge-priority-low', icon: '🟢', label: 'Low' },
+    High: { color: 'priority-badge-High', icon: '🔴', label: 'High' },
+    Medium: { color: 'priority-badge-Medium', icon: '🟡', label: 'Medium' },
+    Low: { color: 'priority-badge-Low', icon: '🟢', label: 'Low' },
   };
 
   const sentimentConfig = {
-    positive: { color: 'badge-sentiment-positive', icon: '😊', label: 'Positive' },
-    neutral: { color: 'badge-sentiment-neutral', icon: '😐', label: 'Neutral' },
-    negative: { color: 'badge-sentiment-negative', icon: '😞', label: 'Negative' },
-    angry: { color: 'badge-sentiment-angry', icon: '😡', label: 'Angry' },
+    positive: { color: 'sentiment-badge-positive', icon: '😊', label: 'Positive' },
+    neutral: { color: 'sentiment-badge-neutral', icon: '😐', label: 'Neutral' },
+    negative: { color: 'sentiment-badge-negative', icon: '😞', label: 'Negative' },
+    angry: { color: 'sentiment-badge-angry', icon: '😡', label: 'Angry' },
   };
 
   const getPriority = (p: string) => priorityConfig[p as keyof typeof priorityConfig] || priorityConfig.Medium;
@@ -31,7 +30,7 @@ export default function ResultsDisplay({ result }: ResultsDisplayProps) {
   const sentiment = getSentiment(result.sentiment);
 
   return (
-    <div className="glass rounded-2xl overflow-hidden animate-fade-scale">
+    <div className="rounded-2xl overflow-hidden animate-fade-in-up bg-white/5 border border-white/10">
       {/* Header */}
       <div className="px-6 py-4 border-b border-white/5">
         <div className="flex items-center gap-2.5">
@@ -82,13 +81,13 @@ export default function ResultsDisplay({ result }: ResultsDisplayProps) {
         </div>
 
         {/* Suggested Solution */}
-        <div className="p-4 rounded-xl bg-gradient-to-br from-primary-500/10 to-accent-500/10 border border-white/5">
+        <div className="p-4 rounded-xl bg-gradient-to-br from-blue-500/10 to-purple-500/10 border border-white/5">
           <div className="flex items-start gap-3">
-            <svg className="w-4 h-4 text-primary-400/60 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 text-blue-400/60 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
             </svg>
             <div>
-              <p className="text-[10px] font-semibold text-primary-400/60 uppercase tracking-wider">Suggested Solution</p>
+              <p className="text-[10px] font-semibold text-blue-400/60 uppercase tracking-wider">Suggested Solution</p>
               <p className="mt-1 text-sm text-white/70 leading-relaxed">{result.suggested_solution}</p>
             </div>
           </div>
@@ -110,16 +109,16 @@ export default function ResultsDisplay({ result }: ResultsDisplayProps) {
               {result.rag_results.map((faq, index) => (
                 <div 
                   key={index} 
-                  className="p-3.5 rounded-xl bg-white/5 border border-white/5 hover:bg-white/8 hover:border-white/10 transition-all duration-300"
+                  className="p-3.5 rounded-xl bg-white/5 border border-white/5 hover:bg-white/10 hover:border-white/10 transition-all duration-300"
                 >
                   <div className="flex items-start gap-3">
-                    <span className="flex-shrink-0 w-5 h-5 rounded-full gradient-bg text-white text-[10px] font-semibold flex items-center justify-center">
+                    <span className="flex-shrink-0 w-5 h-5 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 text-white text-[10px] font-semibold flex items-center justify-center">
                       {index + 1}
                     </span>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-white/80">{faq.question}</p>
-                      <p className="text-sm text-white/40 mt-0.5">{faq.answer}</p>
-                      <div className="flex items-center gap-3 mt-2">
+                      <p className="text-sm text-white/40 mt-0.5 line-clamp-2">{faq.answer}</p>
+                      <div className="flex items-center gap-3 mt-2 flex-wrap">
                         <span className="text-[10px] text-white/20">
                           Similarity: {(faq.similarity * 100).toFixed(0)}%
                         </span>
