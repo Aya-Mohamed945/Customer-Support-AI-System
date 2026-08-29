@@ -35,7 +35,7 @@ jobs:
           python-version: "3.11"
 
       - name: 🔍 Scan Python Dependencies
-        uses: pypa/gh-action-pip-audit@v1.2.1
+        uses: pypa/gh-action-pip-audit@latest
         with:
           requirements: backend/requirements.txt
 
