@@ -45,6 +45,7 @@ tqdm==4.67.1
 pytest==8.3.4
 pytest-cov==6.0.0
 httpx==0.28.1
+coverage[toml]==7.6.0
 
 # ============================================
 # SECUTITY
