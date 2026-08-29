@@ -176,35 +176,34 @@ Final Intelligent Response
 
 ## 📸 Screenshots
 
-### 🏠 Dashboard
-
-<p align="center">
-  <img src="docs/assets/dashboard.png" alt="Customer Support AI Dashboard" width="900">
-</p>
-
-### 🎫 Ticket Analysis
-
-<p align="center">
-  <img src="docs/assets/ticket-analysis.png" alt="Ticket Analysis" width="900">
-</p>
-
-### 📜 User History
-
-<p align="center">
-  <img src="docs/assets/history.png" alt="User History" width="900">
-</p>
-
-### 📊 Admin Metrics Dashboard
-
-<p align="center">
-  <img src="docs/assets/metrics-dashboard.png" alt="Admin Metrics Dashboard" width="900">
-</p>
-
-### 🔐 Login
-
-<p align="center">
-  <img src="docs/assets/login.png" alt="Login Page" width="700">
-</p>
+<table>
+  <tr>
+    <td align="center">
+      <strong>🏠 Dashboard</strong><br>
+      <img src="docs/assets/dashboard.png" alt="Dashboard" width="450">
+    </td>
+    <td align="center">
+      <strong>🎫 Ticket Analysis</strong><br>
+      <img src="docs/assets/ticket-analysis.png" alt="Ticket Analysis" width="450">
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <strong>📜 User History</strong><br>
+      <img src="docs/assets/history.png" alt="User History" width="450">
+    </td>
+    <td align="center">
+      <strong>📊 Admin Metrics Dashboard</strong><br>
+      <img src="docs/assets/metrics-dashboard.png" alt="Admin Metrics Dashboard" width="450">
+    </td>
+  </tr>
+  <tr>
+    <td align="center" colspan="2">
+      <strong>🔐 Login</strong><br>
+      <img src="docs/assets/login.png" alt="Login Page" width="500">
+    </td>
+  </tr>
+</table>
 
 
 ---
