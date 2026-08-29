@@ -16,14 +16,14 @@ permissions:
   actions: read
 
 jobs:
+
   # ============================================
-  # DEPENDENCY SCANNING
+  # 1. DEPENDENCY SCANNING
   # ============================================
   dependency-scan:
     name: 📦 Dependency Scan
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    continue-on-error: true
 
     steps:
       - name: 🔽 Checkout Code
@@ -35,9 +35,17 @@ jobs:
           python-version: "3.11"
 
       - name: 🔍 Scan Python Dependencies
-        uses: pypa/gh-action-pip-audit@main
+        run: |
+          python -m pip install --upgrade pip setuptools pip-audit
+          pip-audit -r backend/requirements.txt --desc | tee pip-audit-report.txt
+
+      - name: 📤 Upload Python Security Report
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          requirements: backend/requirements.txt
+          name: python-security-report
+          path: pip-audit-report.txt
+          if-no-files-found: ignore
 
       - name: 📦 Setup Node.js
         uses: actions/setup-node@v4
@@ -46,20 +54,29 @@ jobs:
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
 
+      - name: 📥 Install Frontend Dependencies
+        working-directory: frontend
+        run: npm ci
+
       - name: 🔍 Scan NPM Dependencies
+        working-directory: frontend
+        run: npm audit --production --audit-level=high --json > npm-audit-report.json
+
+      - name: 📤 Upload NPM Security Report
         if: always()
-        run: |
-          cd frontend
-          npm audit --production --audit-level=high || true
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-security-report
+          path: frontend/npm-audit-report.json
+          if-no-files-found: ignore
 
   # ============================================
-  # SAST - STATIC APPLICATION SECURITY TESTING
+  # 2. SAST - STATIC APPLICATION SECURITY TESTING
   # ============================================
   sast:
-    name: 🔍 SAST Scan
+    name: 🔍 SAST Scan (Bandit)
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    continue-on-error: true
 
     steps:
       - name: 🔽 Checkout Code
@@ -71,30 +88,31 @@ jobs:
           python-version: "3.11"
 
       - name: 📦 Install Bandit
-        run: pip install bandit
+        run: python -m pip install bandit
 
       - name: 🔍 Run Bandit Security Scan
+        working-directory: backend
         run: |
-          cd backend
-          bandit -r app/ -f json -o bandit-report.json || true
-          bandit -r app/ -f html -o bandit-report.html || true
+          bandit -r app/ -f json -o bandit-report.json
+          bandit -r app/ -f html -o bandit-report.html
 
-      - name: 📤 Upload Bandit Report
-        uses: actions/upload-artifact@v4
+      - name: 📤 Upload Bandit Reports
         if: always()
+        uses: actions/upload-artifact@v4
         with:
           name: bandit-report
-          path: backend/bandit-report.*
+          path: |
+            backend/bandit-report.json
+            backend/bandit-report.html
           if-no-files-found: ignore
 
   # ============================================
-  # CONTAINER SCANNING
+  # 3. CONTAINER SCANNING
   # ============================================
   container-scan:
-    name: 🐳 Container Scan
+    name: 🐳 Container Scan (Trivy)
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    continue-on-error: true
 
     steps:
       - name: 🔽 Checkout Code
@@ -103,45 +121,57 @@ jobs:
       - name: 🐳 Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: 🏗️ Build Docker Images
+      - name: 🏗️ Build RAG Image
         run: |
-          docker build -t customer-support-rag:scan -f backend/docker/Dockerfile.rag ./backend || true
-          docker build -t customer-support-api:scan -f backend/docker/Dockerfile.backend ./backend || true
-          docker build -t customer-support-frontend:scan -f frontend/Dockerfile.frontend ./frontend || true
+          docker build \
+            -t customer-support-rag:scan \
+            -f backend/docker/Dockerfile.rag \
+            ./backend
+
+      - name: 🏗️ Build API Image
+        run: |
+          docker build \
+            -t customer-support-api:scan \
+            -f backend/docker/Dockerfile.backend \
+            ./backend
+
+      - name: 🏗️ Build Frontend Image
+        run: |
+          docker build \
+            -t customer-support-frontend:scan \
+            -f frontend/Dockerfile.frontend \
+            ./frontend
 
       - name: 🔍 Scan RAG Image
         uses: aquasecurity/trivy-action@master
-        if: always()
         with:
           image-ref: customer-support-rag:scan
-          format: "sarif"
-          output: "trivy-rag.sarif"
-          severity: "CRITICAL,HIGH"
-          exit-code: 0
+          format: sarif
+          output: trivy-rag.sarif
+          severity: CRITICAL,HIGH
+          exit-code: 1
 
       - name: 🔍 Scan API Image
         uses: aquasecurity/trivy-action@master
-        if: always()
         with:
           image-ref: customer-support-api:scan
-          format: "sarif"
-          output: "trivy-api.sarif"
-          severity: "CRITICAL,HIGH"
-          exit-code: 0
+          format: sarif
+          output: trivy-api.sarif
+          severity: CRITICAL,HIGH
+          exit-code: 1
 
       - name: 🔍 Scan Frontend Image
         uses: aquasecurity/trivy-action@master
-        if: always()
         with:
           image-ref: customer-support-frontend:scan
-          format: "sarif"
-          output: "trivy-frontend.sarif"
-          severity: "CRITICAL,HIGH"
-          exit-code: 0
+          format: sarif
+          output: trivy-frontend.sarif
+          severity: CRITICAL,HIGH
+          exit-code: 1
 
       - name: 📤 Upload Trivy Reports
-        uses: actions/upload-artifact@v4
         if: always()
+        uses: actions/upload-artifact@v4
         with:
           name: trivy-reports
           path: |
@@ -149,3 +179,52 @@ jobs:
             trivy-api.sarif
             trivy-frontend.sarif
           if-no-files-found: ignore
+
+  # ============================================
+  # 4. SECURITY GATE
+  # ============================================
+  security-gate:
+    name: 🚦 Security Gate
+    runs-on: ubuntu-latest
+    needs:
+      - dependency-scan
+      - sast
+      - container-scan
+    if: always()
+
+    steps:
+      - name: 🔍 Evaluate Security Results
+        run: |
+          echo "============================================================"
+          echo "🚦 SECURITY GATE - Final Decision"
+          echo "============================================================"
+
+          echo "Dependency Scan: ${{ needs.dependency-scan.result }}"
+          echo "SAST Scan:       ${{ needs.sast.result }}"
+          echo "Container Scan:  ${{ needs.container-scan.result }}"
+          echo "============================================================"
+
+          if [ "${{ needs.dependency-scan.result }}" != "success" ] || \
+             [ "${{ needs.sast.result }}" != "success" ] || \
+             [ "${{ needs.container-scan.result }}" != "success" ]; then
+
+            echo "❌ Security checks failed."
+            echo "Please review the security reports and resolve the detected issues."
+            exit 1
+          fi
+
+          echo "✅ All security checks passed successfully."
+
+      - name: 📢 Security Summary
+        if: always()
+        run: |
+          echo "============================================================"
+          echo "📊 SECURITY SCAN SUMMARY"
+          echo "============================================================"
+          echo "📦 Python Dependency Scan"
+          echo "📦 NPM Dependency Scan"
+          echo "🔍 SAST - Bandit"
+          echo "🐳 Container Scanning - Trivy"
+          echo "============================================================"
+          echo "📁 Security reports are available as workflow artifacts."
+          echo "============================================================"
