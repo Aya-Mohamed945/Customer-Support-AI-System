@@ -88,9 +88,12 @@
   --space-8: 2rem;
   --space-10: 2.5rem;
   --space-12: 3rem;
+  --space-14: 3.5rem;
+  --space-15: 3.75rem;
   --space-16: 4rem;
   --space-20: 5rem;
   --space-24: 6rem;
+  --space-25: 6.25rem;
   --space-32: 8rem;
 
   /* ==========================================
@@ -128,7 +131,7 @@
 }
 
 /* ============================================
-   ANIMATED BACKGROUND
+   ANIMATED BACKGROUND - KEYFRAMES
    ============================================ */
 @keyframes gradientShift {
   0% { background-position: 0% 50%; }
@@ -207,7 +210,7 @@ html {
 
 body {
   min-height: 100vh;
-  font-family: 'var(--font-jakarta)', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font-jakarta), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background: var(--neutral-950);
   color: var(--neutral-50);
   line-height: 1.6;
@@ -490,7 +493,7 @@ body {
 .badge {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-1.5);
+  gap: var(--space-15);
   padding: var(--space-1) var(--space-3);
   border-radius: var(--radius-full);
   font-size: var(--text-xs);
@@ -681,6 +684,7 @@ body {
     font-size: var(--text-xl);
   }
 }
+
 /* ============================================
    AUTH PAGES - OPTIMIZED
    ============================================ */
@@ -774,7 +778,7 @@ body {
 
 .form-input {
   width: 100%;
-  padding: var(--space-2.5) var(--space-4);
+  padding: var(--space-25) var(--space-4);
   border-radius: var(--radius-md);
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.06);

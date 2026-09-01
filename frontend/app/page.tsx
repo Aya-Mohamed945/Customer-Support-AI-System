@@ -4,10 +4,9 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Sparkles, BrainCircuit, History, LogOut, LayoutDashboard } from 'lucide-react';
+import {  BrainCircuit, History, LogOut, LayoutDashboard } from 'lucide-react';
 import TicketForm from './components/TicketForm';
 import ResultsDisplay from './components/ResultsDisplay';
-import LoadingSkeleton from './components/ui/LoadingSkeleton';
 import Toast from './components/ui/Toast';
 import { predictTicket } from './utils/api';
 import { PredictionResponse, User, ToastData } from './types';  // ✅ من types
@@ -61,14 +60,14 @@ export default function Home() {
 
   if (pageLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0b0f19]">
+      <div className="min-h-screen flex items-center justify-center">
         <div className="w-10 h-10 border-4 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen py-10 px-4 sm:py-16 flex items-center justify-center bg-[#0b0f19]">
+    <div className="min-h-screen py-10 px-4 sm:py-16 flex items-center justify-center">
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
       <div className="max-w-5xl mx-auto w-full">
