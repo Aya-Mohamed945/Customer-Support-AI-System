@@ -29,6 +29,7 @@ jobs:
       - name: 🔽 Checkout Code
         uses: actions/checkout@v4
 
+      # ===== PYTHON DEPENDENCIES =====
       - name: 🐍 Setup Python
         uses: actions/setup-python@v5
         with:
@@ -47,6 +48,7 @@ jobs:
           path: pip-audit-report.txt
           if-no-files-found: ignore
 
+      # ===== NPM DEPENDENCIES =====
       - name: 📦 Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -60,7 +62,8 @@ jobs:
 
       - name: 🔍 Scan NPM Dependencies
         working-directory: frontend
-        run: npm audit --production --audit-level=high --json > npm-audit-report.json
+        run: |
+          npm audit --omit=dev --audit-level=high --json > npm-audit-report.json
 
       - name: 📤 Upload NPM Security Report
         if: always()
@@ -208,12 +211,21 @@ jobs:
              [ "${{ needs.sast.result }}" != "success" ] || \
              [ "${{ needs.container-scan.result }}" != "success" ]; then
 
+            echo ""
             echo "❌ Security checks failed."
-            echo "Please review the security reports and resolve the detected issues."
+            echo ""
+            echo "📋 Next Steps:"
+            echo "  1. Download the security reports from the artifacts"
+            echo "  2. Review the detected vulnerabilities"
+            echo "  3. Run 'npm audit fix' or 'pip-audit --fix' locally"
+            echo "  4. Fix the issues and push again"
+            echo ""
             exit 1
           fi
 
+          echo ""
           echo "✅ All security checks passed successfully."
+          echo ""
 
       - name: 📢 Security Summary
         if: always()
@@ -221,10 +233,10 @@ jobs:
           echo "============================================================"
           echo "📊 SECURITY SCAN SUMMARY"
           echo "============================================================"
-          echo "📦 Python Dependency Scan"
-          echo "📦 NPM Dependency Scan"
-          echo "🔍 SAST - Bandit"
-          echo "🐳 Container Scanning - Trivy"
+          echo "📦 Python Dependency Scan:  ${{ needs.dependency-scan.result }}"
+          echo "📦 NPM Dependency Scan:     ${{ needs.dependency-scan.result }}"
+          echo "🔍 SAST - Bandit:           ${{ needs.sast.result }}"
+          echo "🐳 Container - Trivy:       ${{ needs.container-scan.result }}"
           echo "============================================================"
-          echo "📁 Security reports are available as workflow artifacts."
+          echo "📁 Reports available as workflow artifacts"
           echo "============================================================"
