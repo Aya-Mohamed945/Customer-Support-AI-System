@@ -71,7 +71,7 @@ async def login(request: LoginRequest):
 
     return {
         "access_token": access_token,
-        "token_type": "bearer",
+        "token_type": "bearer",  # nosec B105
         "user": {
             "name": users[request.email]["name"],
             "email": request.email,

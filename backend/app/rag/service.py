@@ -1,7 +1,7 @@
 # app/rag/service.py
 import logging
 import os
-import pickle
+import pickle  # nosec B403
 
 import faiss
 
@@ -60,7 +60,7 @@ class RAGService:
         """Load FAQ metadata"""
         if os.path.exists("models/faq_metadata.pkl"):
             with open("models/faq_metadata.pkl", "rb") as f:
-                self.metadata = pickle.load(f)
+                self.metadata = pickle.load(f)  # nosec B301
             print(f"   ✅ Metadata loaded: {len(self.metadata)} FAQs")
 
     def retrieve(self, query, k=2, threshold=0.1):

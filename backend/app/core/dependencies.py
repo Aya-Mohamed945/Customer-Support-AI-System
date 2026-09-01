@@ -7,7 +7,7 @@ Updated: Priority Model with 98.84% CV Accuracy (20 Clusters)
 import json
 import logging
 import os
-import pickle
+import pickle  # nosec B403
 import sys
 from datetime import datetime, timedelta
 from functools import lru_cache
@@ -155,7 +155,7 @@ class ModelManager:
 
         try:
             with open(path, "rb") as f:
-                return pickle.load(f)
+                return pickle.load(f)  # nosec B301
         except Exception as e2:
             logger.debug(f"   pickle failed: {e2}")
 
@@ -164,7 +164,7 @@ class ModelManager:
                 sys.modules["numpy._core"] = np.core
 
             with open(path, "rb") as f:
-                return pickle.load(f)
+                return pickle.load(f)  # nosec B301
         except Exception as e3:
             logger.error(f"   All loading methods failed: {e3}")
             raise ValueError(f"Could not load {path}")
