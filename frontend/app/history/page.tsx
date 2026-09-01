@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import LoadingSkeleton from '../components/ui/LoadingSkeleton';
 import EmptyState from '../components/ui/EmptyState';
-import { User } from '../types';  
+import { User } from '../types';
 
 interface Ticket {
   ticket_id: string;
@@ -52,11 +52,11 @@ export default function HistoryPage() {
     try {
       const userData = sessionStorage.getItem('user');
       const user = userData ? JSON.parse(userData) : null;
-      
-      const url = user?.email 
+
+      const url = user?.email
         ? `http://localhost:8000/api/v1/metrics/tickets/recent?limit=50&user_id=${encodeURIComponent(user.email)}`
         : `http://localhost:8000/api/v1/metrics/tickets/recent?limit=50`;
-      
+
       const response = await fetch(url);
       if (!response.ok) throw new Error('Failed to fetch history');
       const data = await response.json();
@@ -73,7 +73,7 @@ export default function HistoryPage() {
     const description = ticket?.description || '';
     const priority = ticket?.priority || '';
     const category = ticket?.category || '';
-    
+
     const matchesSearch = title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           description.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesPriority = filterPriority === 'All' || priority === filterPriority;
@@ -153,7 +153,7 @@ export default function HistoryPage() {
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                className="w-full px-3 py-2 bg-white text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                 placeholder="Search your tickets..."
               />
             </div>
@@ -162,22 +162,22 @@ export default function HistoryPage() {
               <select
                 value={filterPriority}
                 onChange={(e) => setFilterPriority(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                className="w-full px-3 py-2 bg-white text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
               >
                 {priorities.map(p => (
-                  <option key={p} value={p}>{p}</option>
+                  <option key={p} value={p} className="bg-white text-gray-900">{p}</option>
                 ))}
               </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
               <select
-                value={filterCategory}
-                onChange={(e) => setFilterCategory(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                value={filterPriority}
+                onChange={(e) => setFilterPriority(e.target.value)}
+                className="w-full px-3 py-2 bg-white text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
               >
                 {categories.map(c => (
-                  <option key={c} value={c}>{c}</option>
+                  <option key={c} value={c} className="bg-white text-gray-900">{c}</option>
                 ))}
               </select>
             </div>
