@@ -68,3 +68,4 @@ notebooks/"backend/data/raw/"
 "backend/catboost_info/" 
 "!backend/models/.gitkeep" 
 "backend/models/" 
+package-lock.json 
