@@ -1,6 +1,6 @@
 # backend/docker/Dockerfile.backend
 # ============================================================
-# Backend API Production Image
+# Customer Support AI - Backend API
 # ============================================================
 
 FROM python:3.11-slim-trixie
@@ -8,28 +8,33 @@ FROM python:3.11-slim-trixie
 WORKDIR /app
 
 # ============================================================
-# Dependency Installation
+# SYSTEM SECURITY UPDATES
 # ============================================================
+RUN apt-get update && \
+    apt-get upgrade -y && \
+    apt-get purge -y \
+        python3-msgpack \
+        python3-setuptools \
+        2>/dev/null || true && \
+    apt-get autoremove -y && \
+    rm -rf /var/lib/apt/lists/*
 
+# ============================================================
+# PYTHON DEPENDENCIES
+# ============================================================
 COPY requirements.txt .
 
-# Install application dependencies first.
-RUN python -m pip install \
+RUN pip install \
     --no-cache-dir \
     --timeout 600 \
     --retries 20 \
     -r requirements.txt
 
 # ============================================================
-# Security Updates
+# SECURITY TOOLCHAIN
+# Exact versions are intentional.
 # ============================================================
-# Upgrade Python packaging tools to versions containing
-# fixes for vulnerabilities reported by Trivy.
-#
-# Explicit versions are used to make the final image
-# deterministic and independently verifiable.
-
-RUN python -m pip install \
+RUN pip install \
     --no-cache-dir \
     --upgrade \
     "pip>=26.2.0" \
@@ -38,56 +43,35 @@ RUN python -m pip install \
     "jaraco.context>=6.1.0"
 
 # ============================================================
-# Build-Time Security Verification
+# SECURITY DEPENDENCY VERIFICATION
 # ============================================================
-# Fail the Docker build if the vulnerable versions somehow
-# remain inside the image.
-
-RUN python -c "\
-import importlib.metadata as m; \
-required = { \
-    'msgpack': '1.2.1', \
-    'setuptools': '83.0.0' \
-}; \
-print('=== SECURITY DEPENDENCY VERIFICATION ==='); \
-[(print(f'{pkg}=={m.version(pkg)}'), \
-  (_ for _ in ()).throw(SystemExit(f'ERROR: {pkg} has version {m.version(pkg)}, expected {ver}'))) \
- for pkg, ver in required.items() if m.version(pkg) != ver]; \
-print('=== SECURITY DEPENDENCIES VERIFIED ===')"
+RUN python -c "exec('import importlib.metadata as m\nexpected={\"msgpack\":\"1.2.1\",\"setuptools\":\"83.0.0\"}\nprint(\"=== SECURITY DEPENDENCY VERIFICATION ===\")\nfor pkg, expected_version in expected.items():\n    actual=m.version(pkg)\n    print(f\"{pkg}=={actual}\")\n    if actual != expected_version:\n        raise SystemExit(f\"ERROR: {pkg}=={actual}; expected {expected_version}\")\nprint(\"=== SECURITY DEPENDENCIES VERIFIED ===\")')"
 
 # ============================================================
-# Application
+# COPY APPLICATION
 # ============================================================
-
 COPY . .
 
+# ============================================================
+# APPLICATION DIRECTORIES
+# ============================================================
 RUN mkdir -p models data/processed logs
 
 # ============================================================
-# Non-root User
+# NON-ROOT USER
 # ============================================================
-
 RUN useradd -m -u 1000 appuser && \
     chown -R appuser:appuser /app
 
 USER appuser
 
 # ============================================================
-# Environment
+# ENVIRONMENT
 # ============================================================
-
 ENV PYTHONUNBUFFERED=1
 ENV LOG_LEVEL=INFO
 ENV RAG_URL=http://rag:8001
 
-# ============================================================
-# Port
-# ============================================================
-
 EXPOSE 8000
-
-# ============================================================
-# Start API
-# ============================================================
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

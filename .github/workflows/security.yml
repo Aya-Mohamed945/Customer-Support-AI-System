@@ -12,6 +12,8 @@
 #   - Backend images are built with --no-cache
 #   - Security-critical Python packages are verified inside
 #     the final image before Trivy runs
+#   - Backend base-image Python packages are removed when they
+#     conflict with security-pinned pip packages
 # ============================================================
 
 name: 🔒 Security Scanning
@@ -67,8 +69,10 @@ jobs:
 
           if grep -q "Found.*vulnerabilities" pip-audit-report.txt 2>/dev/null; then
             VULN_COUNT=$(grep -o "[0-9]\+ vulnerabilities" pip-audit-report.txt | head -1 | grep -o "[0-9]\+" || echo "0")
+
             echo "❌ Found $VULN_COUNT vulnerabilities in Python dependencies:"
             grep -v "^Name\|^---\|^Found" pip-audit-report.txt | head -20 || true
+
             echo ""
             echo "🔧 Please review the report in artifacts."
             echo "pip_status=fail" >> "$GITHUB_OUTPUT"
@@ -390,9 +394,95 @@ jobs:
             -f frontend/Dockerfile.frontend \
             ./frontend
 
-      # ============================================================
-      # 🔍 Trivy Scan - RAG (SARIF + JSON)
-      # ============================================================
+      # ========================================================
+      # 🔎 VERIFY EXACT BACKEND IMAGE CONTENT
+      # ========================================================
+      - name: 🔎 Verify Backend Image Package Locations
+        if: always()
+        run: |
+          echo "============================================================"
+          echo "🔎 BACKEND IMAGE PACKAGE LOCATION DIAGNOSTICS"
+          echo "============================================================"
+
+          for image in customer-support-rag:scan customer-support-api:scan; do
+            echo ""
+            echo "============================================================"
+            echo "🐳 IMAGE: $image"
+            echo "============================================================"
+
+            echo ""
+            echo "📌 Image ID:"
+            docker image inspect "$image" \
+              --format '{{.Id}}'
+
+            echo ""
+            echo "📌 Image created:"
+            docker image inspect "$image" \
+              --format '{{.Created}}'
+
+            echo ""
+            echo "📌 Python package metadata:"
+            docker run --rm \
+              --entrypoint python \
+              "$image" \
+              -c '
+          import importlib.metadata as metadata
+
+          for package in ["msgpack", "setuptools"]:
+              try:
+                  dist = metadata.distribution(package)
+                  print(f"{package}:")
+                  print(f"  version={dist.version}")
+                  print(f"  location={dist.locate_file(\"\")}")
+              except Exception as exc:
+                  print(f"{package}: ERROR: {exc}")
+          '
+
+            echo ""
+            echo "📌 Debian package check:"
+            docker run --rm \
+              --entrypoint sh \
+              "$image" \
+              -c '
+          echo "Installed Debian packages matching target names:"
+          dpkg-query -W -f="${Package} ${Version}\n" 2>/dev/null \
+            | grep -E "^(python3-msgpack|python3-setuptools|python3-pkg-resources) " \
+            || echo "No matching Debian packages found."
+          '
+
+            echo ""
+            echo "📌 Filesystem metadata check:"
+            docker run --rm \
+              --entrypoint sh \
+              "$image" \
+              -c '
+          echo "Potential Python package metadata locations:"
+          find /usr/lib /usr/local/lib \
+            -type f \
+            \( -path "*msgpack*.dist-info/METADATA" \
+            -o -path "*msgpack*.egg-info/PKG-INFO" \
+            -o -path "*setuptools*.dist-info/METADATA" \
+            -o -path "*setuptools*.egg-info/PKG-INFO" \) \
+            2>/dev/null \
+            | sort
+          '
+          done
+
+      # ========================================================
+      # 🔎 VERIFY TRIVY VERSION
+      # ========================================================
+      - name: 🔎 Verify Trivy Environment
+        if: always()
+        run: |
+          echo "============================================================"
+          echo "🔎 TRIVY ENVIRONMENT"
+          echo "============================================================"
+
+          trivy --version
+
+      # ========================================================
+      # 🔍 Trivy Scan - RAG (SARIF)
+      # ========================================================
       - name: 🔍 Scan RAG Image (SARIF)
         id: trivy-rag
         uses: aquasecurity/trivy-action@v0.36.0
@@ -405,6 +495,9 @@ jobs:
           exit-code: 1
           ignore-unfixed: false
 
+      # ========================================================
+      # 🔍 Trivy Scan - RAG (JSON)
+      # ========================================================
       - name: 🔍 Scan RAG Image (JSON)
         id: trivy-rag-json
         continue-on-error: true
@@ -413,12 +506,12 @@ jobs:
             --format json \
             --output trivy-rag.json \
             --severity CRITICAL,HIGH,MEDIUM \
-            --ignore-unfixed \
+            --ignore-unfixed=false \
             customer-support-rag:scan || true
 
-      # ============================================================
-      # 🔍 Trivy Scan - API (SARIF + JSON)
-      # ============================================================
+      # ========================================================
+      # 🔍 Trivy Scan - API (SARIF)
+      # ========================================================
       - name: 🔍 Scan API Image (SARIF)
         id: trivy-api
         uses: aquasecurity/trivy-action@v0.36.0
@@ -431,6 +524,9 @@ jobs:
           exit-code: 1
           ignore-unfixed: false
 
+      # ========================================================
+      # 🔍 Trivy Scan - API (JSON)
+      # ========================================================
       - name: 🔍 Scan API Image (JSON)
         id: trivy-api-json
         continue-on-error: true
@@ -439,12 +535,12 @@ jobs:
             --format json \
             --output trivy-api.json \
             --severity CRITICAL,HIGH,MEDIUM \
-            --ignore-unfixed \
+            --ignore-unfixed=false \
             customer-support-api:scan || true
 
-      # ============================================================
-      # 🔍 Trivy Scan - Frontend (SARIF + JSON)
-      # ============================================================
+      # ========================================================
+      # 🔍 Trivy Scan - Frontend (SARIF)
+      # ========================================================
       - name: 🔍 Scan Frontend Image (SARIF)
         id: trivy-frontend
         uses: aquasecurity/trivy-action@v0.36.0
@@ -457,6 +553,9 @@ jobs:
           exit-code: 1
           ignore-unfixed: false
 
+      # ========================================================
+      # 🔍 Trivy Scan - Frontend (JSON)
+      # ========================================================
       - name: 🔍 Scan Frontend Image (JSON)
         id: trivy-frontend-json
         continue-on-error: true
@@ -465,7 +564,7 @@ jobs:
             --format json \
             --output trivy-frontend.json \
             --severity CRITICAL,HIGH,MEDIUM \
-            --ignore-unfixed \
+            --ignore-unfixed=false \
             customer-support-frontend:scan || true
 
       # ============================================================
