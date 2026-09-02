@@ -3,10 +3,11 @@
 # SECURITY PIPELINE - Customer Support AI
 # ============================================================
 # Policy:
-#   - CRITICAL/HIGH/MEDIUM severity → Fail the pipeline
+#   - CRITICAL/HIGH/MEDIUM with an available fix → Fail the pipeline
+#   - CRITICAL/HIGH/MEDIUM without an available fix → Report only
 #   - LOW severity → Report only (does not block)
 #   - SARIF reports uploaded to GitHub Security tab (CodeQL v4)
-#   - Trivy scans must execute successfully (skipped = failure)
+#   - Trivy scans must execute successfully (invalid/missing report = failure)
 # ============================================================
 
 name: 🔒 Security Scanning
@@ -664,35 +665,180 @@ jobs:
         if: always()
         run: |
           echo "============================================================"
-          echo "🐳 TRIVY CONTAINER SCAN RESULTS"
+          echo "🐳 TRIVY CONTAINER SECURITY GATE"
           echo "============================================================"
 
+          echo ""
+          echo "📊 Trivy Scan Execution Results:"
           echo "   RAG Image:      ${{ steps.trivy-rag.outcome }}"
           echo "   API Image:      ${{ steps.trivy-api.outcome }}"
           echo "   Frontend Image: ${{ steps.trivy-frontend.outcome }}"
 
+          echo ""
+          echo "============================================================"
+          echo "🔎 Evaluating actionable vulnerabilities..."
           echo "============================================================"
 
-          if [[ "${{ steps.trivy-rag.outcome }}" == "failure" || \
-                "${{ steps.trivy-api.outcome }}" == "failure" || \
-                "${{ steps.trivy-frontend.outcome }}" == "failure" ]]; then
+          GATE_FAILED=0
 
-            echo "❌ Container vulnerabilities found."
-            echo "🔍 Check the 'Extract Full CVE Details' and diagnostic steps above for details."
+          for image in rag api frontend; do
+
+            json_file="trivy-${image}.json"
+
+            echo ""
+            echo "------------------------------------------------------------"
+            echo "🐳 IMAGE: ${image^^}"
+            echo "------------------------------------------------------------"
+
+            # --------------------------------------------------
+            # Scan must produce a valid JSON report.
+            # --------------------------------------------------
+            if [ ! -s "$json_file" ]; then
+              echo "❌ Missing or empty Trivy report: $json_file"
+              GATE_FAILED=1
+              continue
+            fi
+
+            if ! jq empty "$json_file" >/dev/null 2>&1; then
+              echo "❌ Invalid Trivy JSON report: $json_file"
+              GATE_FAILED=1
+              continue
+            fi
+
+            # --------------------------------------------------
+            # Count all reported vulnerabilities.
+            # --------------------------------------------------
+            TOTAL=$(jq '
+              [
+                .Results[]?.Vulnerabilities[]?
+              ] | length
+            ' "$json_file")
+
+            # --------------------------------------------------
+            # Count vulnerabilities that have an available fix.
+            # These are considered actionable and block the CI.
+            # --------------------------------------------------
+            ACTIONABLE=$(jq '
+              [
+                .Results[]?.Vulnerabilities[]?
+                | select(
+                    (.Severity == "CRITICAL"
+                    or .Severity == "HIGH"
+                    or .Severity == "MEDIUM")
+                  )
+                | select((.FixedVersion // "") != "")
+                | select((.Status // "") != "will_not_fix")
+              ] | length
+            ' "$json_file")
+
+            # --------------------------------------------------
+            # Count HIGH/CRITICAL/MEDIUM vulnerabilities that
+            # currently have no available fix.
+            # --------------------------------------------------
+            UNFIXED=$(jq '
+              [
+                .Results[]?.Vulnerabilities[]?
+                | select(
+                    (.Severity == "CRITICAL"
+                    or .Severity == "HIGH"
+                    or .Severity == "MEDIUM")
+                  )
+                | select((.FixedVersion // "") == "")
+              ] | length
+            ' "$json_file")
+
+            # --------------------------------------------------
+            # Count LOW vulnerabilities.
+            # --------------------------------------------------
+            LOW=$(jq '
+              [
+                .Results[]?.Vulnerabilities[]?
+                | select(.Severity == "LOW")
+              ] | length
+            ' "$json_file")
+
+            echo "📊 Findings:"
+            echo "   Total vulnerabilities:               $TOTAL"
+            echo "   Actionable HIGH/MEDIUM/CRITICAL:    $ACTIONABLE"
+            echo "   Unfixed HIGH/MEDIUM/CRITICAL:       $UNFIXED"
+            echo "   LOW:                                 $LOW"
+
+            # --------------------------------------------------
+            # Print actionable vulnerabilities.
+            # --------------------------------------------------
+            if [ "$ACTIONABLE" -gt 0 ]; then
+
+              echo ""
+              echo "❌ ACTIONABLE VULNERABILITIES FOUND:"
+              echo ""
+
+              jq -r '
+                .Results[]?.Vulnerabilities[]?
+                | select(
+                    (.Severity == "CRITICAL"
+                    or .Severity == "HIGH"
+                    or .Severity == "MEDIUM")
+                  )
+                | select((.FixedVersion // "") != "")
+                | select((.Status // "") != "will_not_fix")
+                | "   [\(.Severity)] \(.VulnerabilityID)
+      Package:  \(.PkgName)
+      Installed: \(.InstalledVersion)
+      Fixed:     \(.FixedVersion)
+      Status:    \(.Status // "N/A")
+                "
+              ' "$json_file"
+
+              GATE_FAILED=1
+
+            else
+              echo "✅ No actionable HIGH/MEDIUM/CRITICAL vulnerabilities."
+            fi
+
+            # --------------------------------------------------
+            # Report unfixed vulnerabilities without blocking.
+            # --------------------------------------------------
+            if [ "$UNFIXED" -gt 0 ]; then
+
+              echo ""
+              echo "⚠️ UNFIXED VULNERABILITIES:"
+              echo "   These are reported but do not block the pipeline."
+
+              jq -r '
+                .Results[]?.Vulnerabilities[]?
+                | select(
+                    (.Severity == "CRITICAL"
+                    or .Severity == "HIGH"
+                    or .Severity == "MEDIUM")
+                  )
+                | select((.FixedVersion // "") == "")
+                | "   [\(.Severity)] \(.VulnerabilityID)
+      Package:  \(.PkgName)
+      Installed: \(.InstalledVersion)
+      Fixed:     N/A
+      Status:    \(.Status // "N/A")
+                "
+              ' "$json_file"
+
+            fi
+
+          done
+
+          echo ""
+          echo "============================================================"
+          echo "🚦 FINAL TRIVY DECISION"
+          echo "============================================================"
+
+          if [ "$GATE_FAILED" -eq 1 ]; then
+            echo "❌ Actionable container vulnerabilities found."
+            echo "🔧 Fix vulnerabilities with an available patched version."
+            echo "📊 Unfixed vulnerabilities remain reported in SARIF/artifacts."
             exit 1
           fi
 
-          if [[ "${{ steps.trivy-rag.outcome }}" == "skipped" || \
-                "${{ steps.trivy-api.outcome }}" == "skipped" || \
-                "${{ steps.trivy-frontend.outcome }}" == "skipped" ]]; then
-
-            echo "⚠️ One or more Trivy scans were skipped."
-            echo "❌ Security gate cannot pass when a required container scan was not executed."
-            exit 1
-          fi
-
-          echo "✅ All container scans completed successfully."
-          echo "   No CRITICAL/HIGH/MEDIUM vulnerabilities found."
+          echo "✅ No actionable CRITICAL/HIGH/MEDIUM container vulnerabilities found."
+          echo "⚠️ Unfixed vulnerabilities, if any, are report-only."
+          echo "============================================================"
 
   # ============================================================
   # 4. SECURITY GATE
