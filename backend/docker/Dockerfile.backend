@@ -1,24 +1,19 @@
 # backend/docker/Dockerfile.backend
+# ============================================================
+# Backend API Production Image
+# ============================================================
 
-# ============================================================
-# Base Image - Python 3.11 slim Trixie
-# ============================================================
 FROM python:3.11-slim-trixie
 
-# ============================================================
-# Application Setup
-# ============================================================
 WORKDIR /app
 
 # ============================================================
-# Copy Requirements
+# Dependency Installation
 # ============================================================
+
 COPY requirements.txt .
 COPY requirements-dev.txt .
 
-# ============================================================
-# Install Python Dependencies
-# ============================================================
 RUN pip install \
     --no-cache-dir \
     --timeout 600 \
@@ -26,11 +21,11 @@ RUN pip install \
     -r requirements.txt
 
 # ============================================================
-# Upgrade Python Packaging Tools
-#
-# These tools are included in the base Python image and
-# are scanned by Trivy. Upgrade them to patched versions.
+# Security Updates
 # ============================================================
+# Upgrade Python packaging tools to versions that contain
+# fixes for vulnerabilities reported by Trivy.
+
 RUN pip install \
     --no-cache-dir \
     --upgrade \
@@ -40,18 +35,17 @@ RUN pip install \
     "jaraco.context>=6.1.0"
 
 # ============================================================
-# Copy Application Code
+# Application
 # ============================================================
+
 COPY . .
 
-# ============================================================
-# Create Required Directories
-# ============================================================
 RUN mkdir -p models data/processed logs
 
 # ============================================================
 # Non-root User
 # ============================================================
+
 RUN useradd -m -u 1000 appuser && \
     chown -R appuser:appuser /app
 
@@ -60,10 +54,20 @@ USER appuser
 # ============================================================
 # Environment
 # ============================================================
+
 ENV PYTHONUNBUFFERED=1
 ENV LOG_LEVEL=INFO
 ENV RAG_URL=http://rag:8001
 
+# ============================================================
+# Port
+# ============================================================
+
 EXPOSE 8000
 
+# ============================================================
+# Start API
+# ============================================================
+
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
