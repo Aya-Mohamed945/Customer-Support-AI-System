@@ -12,9 +12,9 @@ WORKDIR /app
 # ============================================================
 
 COPY requirements.txt .
-COPY requirements-dev.txt .
 
-RUN pip install \
+# Install application dependencies first.
+RUN python -m pip install \
     --no-cache-dir \
     --timeout 600 \
     --retries 20 \
@@ -23,16 +23,37 @@ RUN pip install \
 # ============================================================
 # Security Updates
 # ============================================================
-# Upgrade Python packaging tools to versions that contain
+# Upgrade Python packaging tools to versions containing
 # fixes for vulnerabilities reported by Trivy.
+#
+# Explicit versions are used to make the final image
+# deterministic and independently verifiable.
 
-RUN pip install \
+RUN python -m pip install \
     --no-cache-dir \
     --upgrade \
     "pip>=26.2.0" \
     "setuptools>=83.0.0" \
     "wheel>=0.46.2" \
     "jaraco.context>=6.1.0"
+
+# ============================================================
+# Build-Time Security Verification
+# ============================================================
+# Fail the Docker build if the vulnerable versions somehow
+# remain inside the image.
+
+RUN python -c "\
+import importlib.metadata as m; \
+required = { \
+    'msgpack': '1.2.1', \
+    'setuptools': '83.0.0' \
+}; \
+print('=== SECURITY DEPENDENCY VERIFICATION ==='); \
+[(print(f'{pkg}=={m.version(pkg)}'), \
+  (_ for _ in ()).throw(SystemExit(f'ERROR: {pkg} has version {m.version(pkg)}, expected {ver}'))) \
+ for pkg, ver in required.items() if m.version(pkg) != ver]; \
+print('=== SECURITY DEPENDENCIES VERIFIED ===')"
 
 # ============================================================
 # Application
@@ -70,4 +91,3 @@ EXPOSE 8000
 # ============================================================
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
-

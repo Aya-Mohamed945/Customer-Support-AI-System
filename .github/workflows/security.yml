@@ -7,6 +7,11 @@
 #   - LOW severity → Report only (does not block)
 #   - SARIF reports uploaded to GitHub Security tab (CodeQL v4)
 #   - Trivy scans must execute successfully (skipped = failure)
+#
+# Container build policy:
+#   - Backend images are built with --no-cache
+#   - Security-critical Python packages are verified inside
+#     the final image before Trivy runs
 # ============================================================
 
 name: 🔒 Security Scanning
@@ -66,10 +71,10 @@ jobs:
             grep -v "^Name\|^---\|^Found" pip-audit-report.txt | head -20 || true
             echo ""
             echo "🔧 Please review the report in artifacts."
-            echo "pip_status=fail" >> $GITHUB_OUTPUT
+            echo "pip_status=fail" >> "$GITHUB_OUTPUT"
           else
             echo "✅ No vulnerabilities found in Python dependencies."
-            echo "pip_status=pass" >> $GITHUB_OUTPUT
+            echo "pip_status=pass" >> "$GITHUB_OUTPUT"
           fi
 
       - name: 📤 Upload Python Report
@@ -110,19 +115,20 @@ jobs:
             if jq -e '.metadata.vulnerabilities | .high > 0 or .moderate > 0' npm-audit-report.json >/dev/null 2>&1; then
               HIGH_COUNT=$(jq '.metadata.vulnerabilities.high // 0' npm-audit-report.json)
               MODERATE_COUNT=$(jq '.metadata.vulnerabilities.moderate // 0' npm-audit-report.json)
+
               echo "❌ Found vulnerabilities:"
               echo "   HIGH: $HIGH_COUNT"
               echo "   MODERATE: $MODERATE_COUNT"
               echo ""
               echo "🔧 Please run 'npm audit fix' locally."
-              echo "npm_status=fail" >> $GITHUB_OUTPUT
+              echo "npm_status=fail" >> "$GITHUB_OUTPUT"
             else
               echo "✅ No HIGH/MODERATE vulnerabilities found."
-              echo "npm_status=pass" >> $GITHUB_OUTPUT
+              echo "npm_status=pass" >> "$GITHUB_OUTPUT"
             fi
           else
             echo "⚠️ No npm audit report generated."
-            echo "npm_status=pass" >> $GITHUB_OUTPUT
+            echo "npm_status=pass" >> "$GITHUB_OUTPUT"
           fi
 
       - name: 📤 Upload NPM Report
@@ -194,11 +200,11 @@ jobs:
           if [ "$HIGH_COUNT" -gt 0 ] || [ "$MEDIUM_COUNT" -gt 0 ]; then
             echo ""
             echo "❌ HIGH/MEDIUM vulnerabilities found."
-            echo "bandit_status=fail" >> $GITHUB_OUTPUT
+            echo "bandit_status=fail" >> "$GITHUB_OUTPUT"
           else
             echo ""
             echo "✅ No HIGH or MEDIUM vulnerabilities found."
-            echo "bandit_status=pass" >> $GITHUB_OUTPUT
+            echo "bandit_status=pass" >> "$GITHUB_OUTPUT"
           fi
 
       - name: 📤 Upload Bandit Reports
@@ -245,17 +251,144 @@ jobs:
       - name: 🐳 Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      # ========================================================
+      # 🔎 VERIFY SOURCE DEPENDENCIES
+      # ========================================================
+      - name: 🔎 Verify Backend Security Dependencies
+        working-directory: backend
+        run: |
+          echo "============================================================"
+          echo "🔎 BACKEND SECURITY DEPENDENCY VERIFICATION"
+          echo "============================================================"
+
+          echo ""
+          echo "📌 Git commit:"
+          git rev-parse HEAD
+
+          echo ""
+          echo "📌 Security pins in requirements.txt:"
+          grep -E '^(msgpack|setuptools)==' requirements.txt
+
+          echo ""
+          echo "📌 Expected versions:"
+          echo "   msgpack==1.2.1"
+          echo "   setuptools==83.0.0"
+
+          if ! grep -q '^msgpack==1.2.1$' requirements.txt; then
+            echo "❌ msgpack security pin is missing or incorrect."
+            exit 1
+          fi
+
+          if ! grep -q '^setuptools==83.0.0$' requirements.txt; then
+            echo "❌ setuptools security pin is missing or incorrect."
+            exit 1
+          fi
+
+          echo ""
+          echo "✅ Source dependency pins verified."
+
+      # ========================================================
+      # 🏗️ BUILD RAG
+      # ========================================================
       - name: 🏗️ Build RAG Image
         run: |
-          docker build -t customer-support-rag:scan -f backend/docker/Dockerfile.rag ./backend
+          docker build \
+            --no-cache \
+            --pull \
+            -t customer-support-rag:scan \
+            -f backend/docker/Dockerfile.rag \
+            ./backend
 
+      # ========================================================
+      # 🔐 VERIFY RAG IMAGE
+      # ========================================================
+      - name: 🔐 Verify RAG Image Dependencies
+        run: |
+          echo "============================================================"
+          echo "🔐 RAG IMAGE DEPENDENCY VERIFICATION"
+          echo "============================================================"
+
+          docker run --rm \
+            --entrypoint python \
+            customer-support-rag:scan \
+            -c '
+          import importlib.metadata as metadata
+
+          expected = {
+              "msgpack": "1.2.1",
+              "setuptools": "83.0.0",
+          }
+
+          print("Installed security-sensitive package versions:")
+
+          for package, required in expected.items():
+              installed = metadata.version(package)
+              print(f"  {package}=={installed}")
+
+              if installed != required:
+                  raise SystemExit(
+                      f"ERROR: {package}=={installed}; expected {required}"
+                  )
+
+          print("✅ RAG image dependencies verified.")
+          '
+
+      # ========================================================
+      # 🏗️ BUILD API
+      # ========================================================
       - name: 🏗️ Build API Image
         run: |
-          docker build -t customer-support-api:scan -f backend/docker/Dockerfile.backend ./backend
+          docker build \
+            --no-cache \
+            --pull \
+            -t customer-support-api:scan \
+            -f backend/docker/Dockerfile.backend \
+            ./backend
 
+      # ========================================================
+      # 🔐 VERIFY API IMAGE
+      # ========================================================
+      - name: 🔐 Verify API Image Dependencies
+        run: |
+          echo "============================================================"
+          echo "🔐 API IMAGE DEPENDENCY VERIFICATION"
+          echo "============================================================"
+
+          docker run --rm \
+            --entrypoint python \
+            customer-support-api:scan \
+            -c '
+          import importlib.metadata as metadata
+
+          expected = {
+              "msgpack": "1.2.1",
+              "setuptools": "83.0.0",
+          }
+
+          print("Installed security-sensitive package versions:")
+
+          for package, required in expected.items():
+              installed = metadata.version(package)
+              print(f"  {package}=={installed}")
+
+              if installed != required:
+                  raise SystemExit(
+                      f"ERROR: {package}=={installed}; expected {required}"
+                  )
+
+          print("✅ API image dependencies verified.")
+          '
+
+      # ========================================================
+      # 🏗️ BUILD FRONTEND
+      # ========================================================
       - name: 🏗️ Build Frontend Image
         run: |
-          docker build -t customer-support-frontend:scan -f frontend/Dockerfile.frontend ./frontend
+          docker build \
+            --pull \
+            -t customer-support-frontend:scan \
+            -f frontend/Dockerfile.frontend \
+            ./frontend
 
       # ============================================================
       # 🔍 Trivy Scan - RAG (SARIF + JSON)
@@ -348,7 +481,6 @@ jobs:
           echo "============================================================"
 
           echo ""
-          echo "------------------------------------------------------------"
           echo "📌 Node.js version:"
           node --version
 
@@ -381,17 +513,19 @@ jobs:
           for pkg in brace-expansion ip-address tar undici; do
             echo ""
             echo "🔎 Searching for: $pkg"
+
             if [ -f package-lock.json ]; then
-              grep -A 5 "\"$pkg\":" package-lock.json | head -10 || echo "   Not found in package-lock.json"
+              grep -A 5 "\"$pkg\":" package-lock.json | head -10 || \
+                echo "   Not found in package-lock.json"
             else
               echo "   package-lock.json not found"
             fi
           done
 
       # ========================================================
-      # Frontend Base Image Diagnostics
+      # 📊 FRONTEND BASE IMAGE DIAGNOSTICS
       # ========================================================
-      - name: Analyze Frontend Base Image
+      - name: 📊 Analyze Frontend Base Image
         if: always()
         run: |
           echo "============================================================"
@@ -443,7 +577,7 @@ jobs:
             ' || true
 
       # ============================================================
-      # 📊 Extract Full CVE Details from JSON
+      # 📊 EXTRACT FULL CVE DETAILS
       # ============================================================
       - name: 📊 Extract Full CVE Details
         id: trivy-extract
@@ -469,16 +603,18 @@ jobs:
                   status: .Status,
                   title: .Title
                 } |
-                "   🔴 [\(.severity)] \(.cve)\n      📦 Package: \(.package)\n      📌 Installed: \(.installed)\n      ✅ Fixed: \(.fixed // "N/A")\n      📊 Status: \(.status // "N/A")\n      💬 \(.title // "")\n"' "$json_file" 2>/dev/null | head -100 || true
+                "   🔴 [\(.severity)] \(.cve)\n      📦 Package: \(.package)\n      📌 Installed: \(.installed)\n      ✅ Fixed: \(.fixed // "N/A")\n      📊 Status: \(.status // "N/A")\n      💬 \(.title // "")\n"
+              ' "$json_file" 2>/dev/null | head -100 || true
             else
               echo ""
               echo "⚠️ $json_file not found or empty"
             fi
           done
+
           echo "============================================================"
 
       # ============================================================
-      # 📤 Upload Reports
+      # 📤 UPLOAD SARIF REPORTS
       # ============================================================
       - name: 📤 Upload Trivy SARIF - RAG
         if: always() && hashFiles('trivy-rag.sarif') != ''
@@ -501,6 +637,9 @@ jobs:
           sarif_file: trivy-frontend.sarif
           category: trivy-frontend
 
+      # ============================================================
+      # 📤 UPLOAD TRIVY REPORTS
+      # ============================================================
       - name: 📤 Upload Trivy Reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -516,7 +655,7 @@ jobs:
           if-no-files-found: ignore
 
       # ============================================================
-      # 🚦 Trivy Security Gate
+      # 🚦 TRIVY SECURITY GATE
       # ============================================================
       - name: 🚦 Trivy Security Gate
         if: always()
@@ -524,22 +663,26 @@ jobs:
           echo "============================================================"
           echo "🐳 TRIVY CONTAINER SCAN RESULTS"
           echo "============================================================"
+
           echo "   RAG Image:      ${{ steps.trivy-rag.outcome }}"
           echo "   API Image:      ${{ steps.trivy-api.outcome }}"
           echo "   Frontend Image: ${{ steps.trivy-frontend.outcome }}"
+
           echo "============================================================"
 
           if [[ "${{ steps.trivy-rag.outcome }}" == "failure" || \
                 "${{ steps.trivy-api.outcome }}" == "failure" || \
                 "${{ steps.trivy-frontend.outcome }}" == "failure" ]]; then
+
             echo "❌ Container vulnerabilities found."
-            echo "🔍 Check the 'Extract Full CVE Details' and diagnostic steps above for details."
+            echo "🔍 Check the CVE extraction and image verification steps above."
             exit 1
           fi
 
           if [[ "${{ steps.trivy-rag.outcome }}" == "skipped" || \
                 "${{ steps.trivy-api.outcome }}" == "skipped" || \
                 "${{ steps.trivy-frontend.outcome }}" == "skipped" ]]; then
+
             echo "⚠️ One or more Trivy scans were skipped."
             echo "❌ Security gate cannot pass when a required container scan was not executed."
             exit 1
@@ -554,10 +697,12 @@ jobs:
   security-gate:
     name: 🚦 Security Gate
     runs-on: ubuntu-latest
+
     needs:
       - dependency-scan
       - sast
       - container-scan
+
     if: always()
 
     steps:
@@ -566,6 +711,7 @@ jobs:
           echo "============================================================"
           echo "🚦 SECURITY GATE - Final Decision"
           echo "============================================================"
+
           echo ""
           echo "📊 Job Results:"
           echo "   Dependency Scan: ${{ needs.dependency-scan.result }}"
@@ -576,12 +722,14 @@ jobs:
           if [ "${{ needs.dependency-scan.result }}" != "success" ] || \
              [ "${{ needs.sast.result }}" != "success" ] || \
              [ "${{ needs.container-scan.result }}" != "success" ]; then
+
             echo "❌ Security checks failed."
             echo ""
             echo "🔧 Action Required:"
             echo "   1. Download security reports from artifacts"
             echo "   2. Review and fix vulnerabilities"
             echo "   3. Re-run the workflow"
+
             exit 1
           fi
 
@@ -593,6 +741,7 @@ jobs:
           echo "============================================================"
           echo "📊 SECURITY SCAN SUMMARY"
           echo "============================================================"
+
           echo ""
           echo "✅ Python Dependencies: Checked"
           echo "✅ NPM Dependencies:   Checked"
