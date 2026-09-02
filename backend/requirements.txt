@@ -1,11 +1,12 @@
+# backend/requirements.txt
 # ============================================
 # CORE
 # ============================================
-fastapi==0.115.6
+fastapi==0.141.1
 uvicorn[standard]==0.34.0
 pydantic==2.10.4
 pydantic-settings==2.6.1
-python-multipart==0.0.20
+python-multipart==0.0.31
 
 # ============================================
 # DATA SCIENCE & ML
@@ -22,32 +23,27 @@ scipy==1.14.1
 xgboost==2.1.4
 imbalanced-learn==0.12.4
 
+
 # ============================================
 # NLP & RAG
 # ============================================
-nltk==3.9.1
-sentence-transformers==3.3.1
+nltk==3.10.3
+sentence-transformers==6.0.1
 faiss-cpu==1.9.0
-transformers==4.46.3
-huggingface-hub==0.26.2
+transformers==5.16.1
+huggingface-hub==1.29.0
 hf_transfer==0.1.8
+
+
 
 # ============================================
 # UTILITIES
 # ============================================
-python-dotenv==1.0.1
+python-dotenv==1.2.2
 loguru==0.7.3
 tqdm==4.67.1
 
 # ============================================
-# TESTING
+# SECURITY
 # ============================================
-pytest==8.3.4
-pytest-cov==6.0.0
-httpx==0.28.1
-coverage[toml]==7.6.0
-
-# ============================================
-# SECUTITY
-# ============================================
-PyJWT==2.8.0
+PyJWT==2.13.0

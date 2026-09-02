@@ -1,7 +1,19 @@
 # backend/requirements-dev.txt
 -r requirements.txt
 
-# Code Quality
+# ============================================
+# TESTING
+# ============================================
+pytest==9.0.3
+pytest-cov==6.0.0
+pytest-xdist==3.5.0
+pytest-timeout==2.2.0
+httpx==0.28.1
+coverage[toml]==7.6.0
+
+# ============================================
+# CODE QUALITY
+# ============================================
 black==23.11.0
 isort==5.12.0
 flake8==6.1.0
@@ -9,12 +21,12 @@ flake8-bugbear
 flake8-comprehensions
 pep8-naming
 
-# Type Checking
+# ============================================
+# TYPE CHECKING
+# ============================================
 mypy==1.7.0
 
-# Pre-commit
+# ============================================
+# PRE-COMMIT
+# ============================================
 pre-commit==3.5.0
-
-# Testing
-pytest-xdist==3.5.0
-pytest-timeout==2.2.0
