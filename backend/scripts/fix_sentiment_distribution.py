@@ -4,41 +4,28 @@
 """
 
 import pandas as pd
-import random
 
 print("=" * 60)
 print("📊 FIXING SENTIMENT DISTRIBUTION")
 print("=" * 60)
 
-# ============================================
-# 1. تحميل البيانات الحالية
-# ============================================
 df = pd.read_csv("data/processed/balanced_sentiment_data.csv")
 df = df.dropna()
 
 print(f"\n1. Current distribution:")
 print(df['label'].value_counts().sort_index())
 
-# ============================================
-# 2. تحديد الـ target
-# ============================================
 TARGET = 500
 
-# ============================================
-# 3. معالجة كل Label
-# ============================================
 
-# === 3.1 Neutral (1) - نشيل شوية عشان نوصل لـ 500 ===
 neutral_df = df[df['label'] == 1]
 if len(neutral_df) > TARGET:
     neutral_df = neutral_df.sample(n=TARGET, random_state=42)
     print(f"   Neutral (1): {len(neutral_df)} (was 450)")
 
-# === 3.2 Positive (2) - نضيف لو ناقص ===
 positive_df = df[df['label'] == 2]
 positive_extra = []
 if len(positive_df) < TARGET:
-    # نضيف positive تذاكر جديدة
     positive_tickets = [
         "The customer service was excellent!",
         "I'm really happy with my purchase",
@@ -101,7 +88,6 @@ if len(negative_df) < TARGET:
         negative_df = negative_df.sample(n=TARGET, random_state=42)
     print(f"   Negative (0): {len(negative_df)} (added {len(negative_extra)})")
 
-# === 3.4 Angry (3) - نضيف لو ناقص ===
 angry_df = df[df['label'] == 3]
 angry_extra = []
 if len(angry_df) < TARGET:
@@ -129,18 +115,12 @@ if len(angry_df) < TARGET:
         angry_df = angry_df.sample(n=TARGET, random_state=42)
     print(f"   Angry (3): {len(angry_df)} (added {len(angry_extra)})")
 
-# ============================================
-# 4. دمج الكل
-# ============================================
 df_balanced = pd.concat([neutral_df, positive_df, negative_df, angry_df], ignore_index=True)
 df_balanced = df_balanced.sample(frac=1, random_state=42).reset_index(drop=True)
 
 print(f"\n4. Final balanced distribution:")
 print(df_balanced['label'].value_counts().sort_index())
 
-# ============================================
-# 5. حفظ
-# ============================================
 df_balanced.to_csv("data/processed/balanced_sentiment_data.csv", index=False)
 print("\n✅ Data saved! Perfectly balanced!")
 print("=" * 60)

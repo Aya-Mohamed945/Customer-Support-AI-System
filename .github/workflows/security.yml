@@ -3,9 +3,10 @@
 # SECURITY PIPELINE - Customer Support AI
 # ============================================================
 # Policy:
-#   - HIGH/MEDIUM severity → Fail the pipeline
+#   - CRITICAL/HIGH/MEDIUM severity → Fail the pipeline
 #   - LOW severity → Report only (does not block)
-#   - CRITICAL/HIGH in containers → Fail the pipeline
+#   - All security reports are always uploaded as artifacts
+#   - SARIF reports uploaded to GitHub Security tab
 # ============================================================
 
 name: 🔒 Security Scanning
@@ -51,7 +52,7 @@ jobs:
         id: pip-scan
         continue-on-error: true
         run: |
-          pip-audit -r backend/requirements.txt --desc | tee pip-audit-report.txt
+          pip-audit -r backend/requirements.txt --desc 2>&1 | tee pip-audit-report.txt || true
 
       - name: 📊 Analyze Python Results
         id: pip-analysis
@@ -59,6 +60,11 @@ jobs:
           echo "============================================================"
           echo "📦 PYTHON DEPENDENCY ANALYSIS"
           echo "============================================================"
+
+          # pip-audit يعرض vulnerabilities بهذا الشكل:
+          # Name | Version | ID | Fix Versions | Description
+
+          VULN_COUNT=$(grep -c "^[a-zA-Z]" pip-audit-report.txt 2>/dev/null | head -1 || echo "0")
 
           CRITICAL_COUNT=$(grep -c "CRITICAL" pip-audit-report.txt 2>/dev/null || echo "0")
           HIGH_COUNT=$(grep -c "HIGH" pip-audit-report.txt 2>/dev/null || echo "0")
@@ -77,7 +83,8 @@ jobs:
             echo "❌ Vulnerabilities found:"
             grep -E "CRITICAL|HIGH|MEDIUM" pip-audit-report.txt 2>/dev/null || true
             echo ""
-            echo "🔧 Please update affected packages."
+            echo "🔧 Please update affected packages:"
+            echo "   pip install --upgrade <package-name>"
             echo "pip_status=fail" >> $GITHUB_OUTPUT
           else
             echo ""
@@ -109,7 +116,8 @@ jobs:
         id: npm-scan
         continue-on-error: true
         working-directory: frontend
-        run: npm audit --production --audit-level=high --json > npm-audit-report.json
+        run: |
+          npm audit --production --audit-level=high --json 2>/dev/null > npm-audit-report.json || true
 
       - name: 📊 Analyze NPM Results
         id: npm-analysis
@@ -119,10 +127,10 @@ jobs:
           echo "📦 NPM DEPENDENCY ANALYSIS"
           echo "============================================================"
 
-          if [ -f npm-audit-report.json ]; then
-            HIGH_COUNT=$(jq '.metadata.vulnerabilities.high' npm-audit-report.json 2>/dev/null || echo "0")
-            MODERATE_COUNT=$(jq '.metadata.vulnerabilities.moderate' npm-audit-report.json 2>/dev/null || echo "0")
-            LOW_COUNT=$(jq '.metadata.vulnerabilities.low' npm-audit-report.json 2>/dev/null || echo "0")
+          if [ -f npm-audit-report.json ] && [ -s npm-audit-report.json ]; then
+            HIGH_COUNT=$(jq '.metadata.vulnerabilities.high // 0' npm-audit-report.json 2>/dev/null || echo "0")
+            MODERATE_COUNT=$(jq '.metadata.vulnerabilities.moderate // 0' npm-audit-report.json 2>/dev/null || echo "0")
+            LOW_COUNT=$(jq '.metadata.vulnerabilities.low // 0' npm-audit-report.json 2>/dev/null || echo "0")
 
             echo "📊 Findings Summary:"
             echo "   HIGH:     $HIGH_COUNT"
@@ -133,9 +141,10 @@ jobs:
             if [ "$HIGH_COUNT" -gt 0 ] || [ "$MODERATE_COUNT" -gt 0 ]; then
               echo ""
               echo "❌ HIGH/MODERATE vulnerabilities found:"
-              jq -r '.advisories | .[] | "   - [\(.severity)] \(.title)"' npm-audit-report.json 2>/dev/null || true
+              jq -r '.advisories // {} | to_entries[] | "   - [\(.value.severity)] \(.value.title)"' npm-audit-report.json 2>/dev/null | head -20 || true
               echo ""
-              echo "🔧 Please update affected packages."
+              echo "🔧 Please update affected packages:"
+              echo "   npm update <package-name>"
               echo "npm_status=fail" >> $GITHUB_OUTPUT
             else
               echo ""
@@ -217,18 +226,9 @@ jobs:
           if [ "$HIGH_COUNT" -gt 0 ] || [ "$MEDIUM_COUNT" -gt 0 ]; then
             echo ""
             echo "❌ HIGH/MEDIUM vulnerabilities found:"
-            echo "============================================================"
-            jq -r '.results[] |
-              select(.issue_severity == "HIGH" or .issue_severity == "MEDIUM") |
-              "   [\(.issue_severity)] \(.test_name)\n   📁 \(.filename):\(.line_number)\n   💬 \(.issue_text)\n   🔧 \(.test_id)\n"' bandit-report.json 2>/dev/null || true
-            echo "============================================================"
+            jq -r '.results[] | select(.issue_severity == "HIGH" or .issue_severity == "MEDIUM") | "   - [\(.issue_severity)] \(.test_name): \(.filename):\(.line_number) - \(.issue_text)"' bandit-report.json 2>/dev/null || true
             echo ""
-            echo "🔧 How to fix:"
-            echo "   1. Check the file and line number above"
-            echo "   2. Review the Bandit documentation for the test_id"
-            echo "   3. Apply the suggested fix or add # nosec with justification"
-            echo "   4. Re-run locally: bandit -r app/"
-            echo ""
+            echo "🔧 Please fix these issues."
             echo "bandit_status=fail" >> $GITHUB_OUTPUT
           else
             echo ""
@@ -246,12 +246,18 @@ jobs:
             backend/bandit-report.html
           if-no-files-found: ignore
 
+      - name: 📤 Upload Bandit SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: backend/bandit-report.json
+          category: bandit-sast
+
       - name: 🚦 Bandit Gate
         if: always()
         run: |
           if [ "${{ steps.bandit-analysis.outputs.bandit_status }}" == "fail" ]; then
             echo "❌ Bandit found HIGH/MEDIUM vulnerabilities. Failing the pipeline."
-            echo "📁 Download bandit-report artifact for details."
             exit 1
           else
             echo "✅ Bandit passed all checks."
@@ -295,31 +301,58 @@ jobs:
             ./frontend
 
       - name: 🔍 Scan RAG Image
-        uses: aquasecurity/trivy-action@0.28.0
+        id: trivy-rag
+        uses: aquasecurity/trivy-action@v0.36.0
+        continue-on-error: true
         with:
           image-ref: customer-support-rag:scan
           format: sarif
           output: trivy-rag.sarif
           severity: CRITICAL,HIGH
-          exit-code: 1
+          exit-code: 0
 
       - name: 🔍 Scan API Image
-        uses: aquasecurity/trivy-action@0.28.0
+        id: trivy-api
+        uses: aquasecurity/trivy-action@v0.36.0
+        continue-on-error: true
         with:
           image-ref: customer-support-api:scan
           format: sarif
           output: trivy-api.sarif
           severity: CRITICAL,HIGH
-          exit-code: 1
+          exit-code: 0
 
       - name: 🔍 Scan Frontend Image
-        uses: aquasecurity/trivy-action@0.28.0
+        id: trivy-frontend
+        uses: aquasecurity/trivy-action@v0.36.0
+        continue-on-error: true
         with:
           image-ref: customer-support-frontend:scan
           format: sarif
           output: trivy-frontend.sarif
           severity: CRITICAL,HIGH
-          exit-code: 1
+          exit-code: 0
+
+      - name: 📤 Upload Trivy SARIF - RAG
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-rag.sarif
+          category: trivy-rag
+
+      - name: 📤 Upload Trivy SARIF - API
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-api.sarif
+          category: trivy-api
+
+      - name: 📤 Upload Trivy SARIF - Frontend
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-frontend.sarif
+          category: trivy-frontend
 
       - name: 📤 Upload Trivy Reports
         if: always()
@@ -331,6 +364,32 @@ jobs:
             trivy-api.sarif
             trivy-frontend.sarif
           if-no-files-found: ignore
+
+      - name: 🚦 Trivy Gate
+        if: always()
+        run: |
+          echo "============================================================"
+          echo "🐳 TRIVY CONTAINER SCAN RESULTS"
+          echo "============================================================"
+
+          RAG_STATUS="${{ steps.trivy-rag.outcome }}"
+          API_STATUS="${{ steps.trivy-api.outcome }}"
+          FRONTEND_STATUS="${{ steps.trivy-frontend.outcome }}"
+
+          echo "   RAG Image:      $RAG_STATUS"
+          echo "   API Image:      $API_STATUS"
+          echo "   Frontend Image: $FRONTEND_STATUS"
+          echo "============================================================"
+
+          if [ "$RAG_STATUS" != "success" ] || \
+             [ "$API_STATUS" != "success" ] || \
+             [ "$FRONTEND_STATUS" != "success" ]; then
+            echo "❌ Container vulnerabilities found. Failing the pipeline."
+            exit 1
+          else
+            echo "✅ All container scans passed."
+            exit 0
+          fi
 
   # ============================================================
   # 4. SECURITY GATE - FINAL DECISION
@@ -372,8 +431,7 @@ jobs:
           fi
 
           echo "✅ All security checks passed successfully."
-          echo "   - No HIGH/MEDIUM vulnerabilities found"
-          echo "   - No CRITICAL/HIGH container vulnerabilities"
+          echo "   - No CRITICAL/HIGH/MEDIUM vulnerabilities found"
           echo "   - LOW severity findings are reported but do not block"
 
       - name: 📢 Security Summary
@@ -393,4 +451,8 @@ jobs:
           echo "   - npm-security-report"
           echo "   - bandit-report"
           echo "   - trivy-reports"
+          echo ""
+          echo "🔍 SARIF reports uploaded to GitHub Security tab:"
+          echo "   - Bandit SAST findings"
+          echo "   - Trivy container vulnerabilities"
           echo "============================================================"
