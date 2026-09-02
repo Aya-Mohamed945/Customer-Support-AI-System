@@ -493,6 +493,47 @@ jobs:
           if-no-files-found: warn
 
       # ========================================================
+      # Extract Trivy CVEs
+      # ========================================================
+      - name: Extract Trivy CVEs
+        if: always()
+        run: |
+          echo "========================================"
+          echo "Trivy Security Findings"
+          echo "========================================"
+
+          for json_file in \
+            trivy-rag.json \
+            trivy-api.json \
+            trivy-frontend.json
+          do
+            if [ -f "$json_file" ]; then
+
+              echo ""
+              echo "----------------------------------------"
+              echo "File: $json_file"
+              echo "----------------------------------------"
+
+              jq -r '
+                .Results[]?.Vulnerabilities[]? |
+                {
+                  cve: .VulnerabilityID,
+                  severity: .Severity,
+                  package: .PkgName,
+                  installed: .InstalledVersion,
+                  fixed: .FixedVersion,
+                  status: .Status,
+                  title: .Title
+                } |
+                "🔴 [\(.severity)] \(.cve)\n   📦 Package: \(.package)\n   📌 Installed: \(.installed)\n   ✅ Fixed: \(.fixed // "N/A")\n   📊 Status: \(.status // "N/A")\n   💬 \(.title // "")\n"
+              ' "$json_file" | head -150 || true
+
+            else
+              echo "⚠️ $json_file was not generated."
+            fi
+          done
+
+      # ========================================================
       # Container Security Gate
       # ========================================================
       - name: Container Security Gate
