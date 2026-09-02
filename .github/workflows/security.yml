@@ -860,7 +860,7 @@ jobs:
           echo "============================================================"
 
           echo ""
-          echo "📊 Job Results:"
+          echo "Job Results:"
           echo "   Dependency Scan: ${{ needs.dependency-scan.result }}"
           echo "   SAST Scan:       ${{ needs.sast.result }}"
           echo "   Container Scan:  ${{ needs.container-scan.result }}"
