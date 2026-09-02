@@ -257,8 +257,10 @@ jobs:
         run: |
           docker build -t customer-support-frontend:scan -f frontend/Dockerfile.frontend ./frontend
 
-      # ✅ Trivy مع exit-code: 1 و continue-on-error
-      - name: 🔍 Scan RAG Image
+      # ============================================================
+      # 🔍 Trivy Scan - RAG (SARIF + JSON)
+      # ============================================================
+      - name: 🔍 Scan RAG Image (SARIF)
         id: trivy-rag
         uses: aquasecurity/trivy-action@v0.36.0
         continue-on-error: true
@@ -269,7 +271,20 @@ jobs:
           severity: CRITICAL,HIGH
           exit-code: 1
 
-      - name: 🔍 Scan API Image
+      - name: 🔍 Scan RAG Image (JSON)
+        id: trivy-rag-json
+        continue-on-error: true
+        run: |
+          trivy image \
+            --format json \
+            --output trivy-rag.json \
+            --severity CRITICAL,HIGH \
+            customer-support-rag:scan || true
+
+      # ============================================================
+      # 🔍 Trivy Scan - API (SARIF + JSON)
+      # ============================================================
+      - name: 🔍 Scan API Image (SARIF)
         id: trivy-api
         uses: aquasecurity/trivy-action@v0.36.0
         continue-on-error: true
@@ -280,7 +295,20 @@ jobs:
           severity: CRITICAL,HIGH
           exit-code: 1
 
-      - name: 🔍 Scan Frontend Image
+      - name: 🔍 Scan API Image (JSON)
+        id: trivy-api-json
+        continue-on-error: true
+        run: |
+          trivy image \
+            --format json \
+            --output trivy-api.json \
+            --severity CRITICAL,HIGH \
+            customer-support-api:scan || true
+
+      # ============================================================
+      # 🔍 Trivy Scan - Frontend (SARIF + JSON)
+      # ============================================================
+      - name: 🔍 Scan Frontend Image (SARIF)
         id: trivy-frontend
         uses: aquasecurity/trivy-action@v0.36.0
         continue-on-error: true
@@ -291,26 +319,51 @@ jobs:
           severity: CRITICAL,HIGH
           exit-code: 1
 
-      # ✅ استخراج تفاصيل الـ CVEs من تقارير Trivy
-      - name: 📊 Extract CVE Details from Trivy Reports
+      - name: 🔍 Scan Frontend Image (JSON)
+        id: trivy-frontend-json
+        continue-on-error: true
+        run: |
+          trivy image \
+            --format json \
+            --output trivy-frontend.json \
+            --severity CRITICAL,HIGH \
+            customer-support-frontend:scan || true
+
+      # ============================================================
+      # 📊 Extract Full CVE Details from JSON
+      # ============================================================
+      - name: 📊 Extract Full CVE Details
         id: trivy-extract
         run: |
           echo "============================================================"
-          echo "🐳 TRIVY VULNERABILITY DETAILS"
+          echo "🐳 TRIVY VULNERABILITY DETAILS (Full)"
           echo "============================================================"
 
-          for file in trivy-rag.sarif trivy-api.sarif trivy-frontend.sarif; do
-            if [ -f "$file" ]; then
+          for json_file in trivy-rag.json trivy-api.json trivy-frontend.json; do
+            if [ -f "$json_file" ]; then
               echo ""
-              echo "📁 $(basename $file .sarif):"
+              echo "📁 $(basename "$json_file" .json):"
               echo "------------------------------------------------------------"
-              jq -r '.runs[].results[] |
-                "   🔴 [\(.level)] \(.ruleId)\n      💬 \(.message.text | split("\n")[0])\n"' "$file" 2>/dev/null | head -30 || true
+
+              # ✅ استخراج: CVE, Package, Installed, Fixed, Severity, Status
+              jq -r '.Results[]?.Vulnerabilities[]? |
+                {
+                  cve: .VulnerabilityID,
+                  severity: .Severity,
+                  package: .PkgName,
+                  installed: .InstalledVersion,
+                  fixed: .FixedVersion,
+                  status: .Status,
+                  title: .Title
+                } |
+                "   🔴 [\(.severity)] \(.cve)\n      📦 Package: \(.package)\n      📌 Installed: \(.installed)\n      ✅ Fixed: \(.fixed)\n      📊 Status: \(.status // "N/A")\n      💬 \(.title // "")\n"' "$json_file" 2>/dev/null | head -100 || true
             fi
           done
           echo "============================================================"
 
-      # ✅ SARIF إلى GitHub Security
+      # ============================================================
+      # 📤 Upload Reports
+      # ============================================================
       - name: 📤 Upload Trivy SARIF - RAG
         if: always() && hashFiles('trivy-rag.sarif') != ''
         uses: github/codeql-action/upload-sarif@v4
@@ -332,7 +385,6 @@ jobs:
           sarif_file: trivy-frontend.sarif
           category: trivy-frontend
 
-      # ✅ Upload Trivy Reports as artifacts
       - name: 📤 Upload Trivy Reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -340,11 +392,16 @@ jobs:
           name: trivy-reports
           path: |
             trivy-rag.sarif
+            trivy-rag.json
             trivy-api.sarif
+            trivy-api.json
             trivy-frontend.sarif
+            trivy-frontend.json
           if-no-files-found: ignore
 
-      # ✅ Trivy Gate - يميز بين failure و skipped
+      # ============================================================
+      # 🚦 Trivy Security Gate
+      # ============================================================
       - name: 🚦 Trivy Security Gate
         if: always()
         run: |
@@ -356,16 +413,14 @@ jobs:
           echo "   Frontend Image: ${{ steps.trivy-frontend.outcome }}"
           echo "============================================================"
 
-          # ✅ فشل لو في vulnerabilities
           if [[ "${{ steps.trivy-rag.outcome }}" == "failure" || \
                 "${{ steps.trivy-api.outcome }}" == "failure" || \
                 "${{ steps.trivy-frontend.outcome }}" == "failure" ]]; then
             echo "❌ Container vulnerabilities found."
-            echo "🔍 Check the 'Extract CVE Details' step above for details."
+            echo "🔍 Check the 'Extract Full CVE Details' step above for details."
             exit 1
           fi
 
-          # ✅ فشل لو أي scan اتخطى (skipped)
           if [[ "${{ steps.trivy-rag.outcome }}" == "skipped" || \
                 "${{ steps.trivy-api.outcome }}" == "skipped" || \
                 "${{ steps.trivy-frontend.outcome }}" == "skipped" ]]; then
@@ -374,7 +429,6 @@ jobs:
             exit 1
           fi
 
-          # ✅ نجاح لو كل حاجة تمام
           echo "✅ All container scans completed successfully."
           echo "   No CRITICAL/HIGH vulnerabilities found."
 
