@@ -18,7 +18,6 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: ${{ github.repository }}
 
 jobs:
 
@@ -31,6 +30,8 @@ jobs:
 
     if: github.event_name == 'push' || github.event.inputs.environment == 'staging'
 
+    environment: staging
+
     permissions:
       contents: read
       packages: write
@@ -42,6 +43,22 @@ jobs:
       # --------------------------------------------------------
       - name: 🔽 Checkout Code
         uses: actions/checkout@v4
+
+      # --------------------------------------------------------
+      # Normalize Docker Image Name
+      # GHCR requires lowercase repository names.
+      # --------------------------------------------------------
+      - name: 🔤 Normalize Image Name
+        id: image-name
+        run: |
+          IMAGE_PREFIX=$(echo "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')
+          echo "IMAGE_PREFIX=${IMAGE_PREFIX}" >> "$GITHUB_ENV"
+
+          echo "============================================================"
+          echo "🐳 DOCKER IMAGE CONFIGURATION"
+          echo "============================================================"
+          echo "Repository: ${GITHUB_REPOSITORY}"
+          echo "Image prefix: ${IMAGE_PREFIX}"
 
       # --------------------------------------------------------
       # Docker Buildx
@@ -107,7 +124,7 @@ jobs:
       # --------------------------------------------------------
       # Deployment Summary
       # --------------------------------------------------------
-      - name: 📋 Deployment Summary
+      - name: 📋 Staging Summary
         run: |
           echo "============================================================"
           echo "🚀 STAGING BUILD COMPLETED"
@@ -115,6 +132,7 @@ jobs:
 
           echo ""
           echo "📦 Docker Images:"
+
           echo "   RAG:"
           echo "   ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-rag:staging"
 
@@ -132,7 +150,7 @@ jobs:
 
           echo ""
           echo "============================================================"
-          echo "✅ CD PIPELINE PASSED"
+          echo "✅ STAGING CD PIPELINE PASSED"
           echo "============================================================"
 
 
@@ -144,6 +162,8 @@ jobs:
     runs-on: ubuntu-latest
 
     if: github.event.inputs.environment == 'production'
+
+    environment: production
 
     needs: deploy-staging
 
@@ -158,6 +178,22 @@ jobs:
       # --------------------------------------------------------
       - name: 🔽 Checkout Code
         uses: actions/checkout@v4
+
+      # --------------------------------------------------------
+      # Normalize Docker Image Name
+      # GHCR requires lowercase repository names.
+      # --------------------------------------------------------
+      - name: 🔤 Normalize Image Name
+        id: image-name
+        run: |
+          IMAGE_PREFIX=$(echo "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')
+          echo "IMAGE_PREFIX=${IMAGE_PREFIX}" >> "$GITHUB_ENV"
+
+          echo "============================================================"
+          echo "🐳 DOCKER IMAGE CONFIGURATION"
+          echo "============================================================"
+          echo "Repository: ${GITHUB_REPOSITORY}"
+          echo "Image prefix: ${IMAGE_PREFIX}"
 
       # --------------------------------------------------------
       # Docker Buildx
@@ -249,5 +285,5 @@ jobs:
 
           echo ""
           echo "============================================================"
-          echo "✅ PRODUCTION BUILD PIPELINE PASSED"
+          echo "✅ PRODUCTION CD PIPELINE PASSED"
           echo "============================================================"
