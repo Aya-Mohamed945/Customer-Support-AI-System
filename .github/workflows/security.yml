@@ -1,23 +1,16 @@
-# .github/workflows/security.yml
-# ============================================================
-# SECURITY PIPELINE - Customer Support AI
-# ============================================================
-# Policy:
-#   - CRITICAL/HIGH/MEDIUM severity → Fail the pipeline
-#   - LOW severity → Report only (does not block)
-#   - SARIF reports uploaded to GitHub Security tab (CodeQL v4)
-#   - Trivy scans must execute successfully (skipped = failure)
-# ============================================================
-
-name: 🔒 Security Scanning
+name: Security Scan
 
 on:
   push:
-    branches: [main, develop]
+    branches:
+      - main
+      - master
+      - develop
   pull_request:
-    branches: [main]
-  schedule:
-    - cron: "0 0 * * 0"
+    branches:
+      - main
+      - master
+      - develop
   workflow_dispatch:
 
 permissions:
@@ -27,326 +20,421 @@ permissions:
 
 jobs:
 
-  # ============================================================
-  # 1. DEPENDENCY SCANNING
-  # ============================================================
+  # ==========================================================
+  # Dependency Scan
+  # ==========================================================
   dependency-scan:
-    name: 📦 Dependency Scan
+    name: Dependency Security Scan
     runs-on: ubuntu-latest
-    timeout-minutes: 10
 
     steps:
-      - name: 🔽 Checkout Code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: 🐍 Setup Python
+      # --------------------------------------------------------
+      # Python Dependencies
+      # --------------------------------------------------------
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: '3.11'
 
-      - name: 📦 Install pip-audit
-        run: python -m pip install pip-audit
-
-      - name: 🔍 Scan Python Dependencies
-        id: pip-scan
-        continue-on-error: true
+      - name: Install pip-audit
         run: |
-          pip-audit -r backend/requirements.txt --desc 2>&1 | tee pip-audit-report.txt || true
+          python -m pip install --upgrade pip
+          pip install pip-audit
 
-      - name: 📊 Analyze Python Results
-        id: pip-analysis
+      - name: Run pip-audit
+        id: pip-audit
         run: |
-          echo "============================================================"
-          echo "📦 PYTHON DEPENDENCY ANALYSIS"
-          echo "============================================================"
+          set +e
 
-          if grep -q "Found.*vulnerabilities" pip-audit-report.txt 2>/dev/null; then
-            VULN_COUNT=$(grep -o "[0-9]\+ vulnerabilities" pip-audit-report.txt | head -1 | grep -o "[0-9]\+" || echo "0")
-            echo "❌ Found $VULN_COUNT vulnerabilities in Python dependencies:"
-            grep -v "^Name\|^---\|^Found" pip-audit-report.txt | head -20 || true
-            echo ""
-            echo "🔧 Please review the report in artifacts."
-            echo "pip_status=fail" >> $GITHUB_OUTPUT
+          pip-audit \
+            -r backend/requirements.txt \
+            --desc \
+            --format json \
+            --output pip-audit-report.json
+
+          AUDIT_EXIT=$?
+
+          echo "pip_audit_exit=$AUDIT_EXIT" >> "$GITHUB_OUTPUT"
+
+          if [ "$AUDIT_EXIT" -ne 0 ]; then
+            echo "❌ pip-audit detected vulnerabilities."
           else
-            echo "✅ No vulnerabilities found in Python dependencies."
-            echo "pip_status=pass" >> $GITHUB_OUTPUT
+            echo "✅ pip-audit found no known vulnerabilities."
           fi
 
-      - name: 📤 Upload Python Report
+          exit 0
+
+      - name: Analyze pip-audit results
+        id: pip-analysis
+        run: |
+          if [ ! -f pip-audit-report.json ]; then
+            echo "❌ pip-audit report was not generated."
+            echo "pip_status=fail" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          VULN_COUNT=$(jq '[.dependencies[]?.vulns[]?] | length' pip-audit-report.json 2>/dev/null || echo "0")
+
+          echo "Python vulnerabilities found: $VULN_COUNT"
+
+          if [ "$VULN_COUNT" -gt 0 ]; then
+            echo "❌ Python dependency vulnerabilities detected."
+            echo "pip_status=fail" >> "$GITHUB_OUTPUT"
+          else
+            echo "✅ No Python dependency vulnerabilities detected."
+            echo "pip_status=pass" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload pip-audit report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: python-security-report
-          path: pip-audit-report.txt
-          if-no-files-found: ignore
+          name: pip-audit-report
+          path: pip-audit-report.json
+          if-no-files-found: warn
 
-      - name: 📦 Setup Node.js
+      # --------------------------------------------------------
+      # Node.js Dependencies
+      # --------------------------------------------------------
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
-          cache: "npm"
+          node-version: '20'
+          cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
 
-      - name: 📥 Install Frontend Dependencies
+      - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
 
-      - name: 🔍 Scan NPM Dependencies
-        id: npm-scan
-        continue-on-error: true
+      - name: Run npm audit
+        id: npm-audit
         working-directory: frontend
         run: |
-          npm audit --production --audit-level=high --json 2>/dev/null > npm-audit-report.json || true
+          npm audit \
+            --production \
+            --audit-level=moderate \
+            --json > npm-audit-report.json 2>/dev/null || true
 
-      - name: 📊 Analyze NPM Results
+      - name: Analyze npm audit results
         id: npm-analysis
         working-directory: frontend
         run: |
-          echo "============================================================"
-          echo "📦 NPM DEPENDENCY ANALYSIS"
-          echo "============================================================"
-
-          if [ -f npm-audit-report.json ] && [ -s npm-audit-report.json ]; then
-            if jq -e '.metadata.vulnerabilities | .high > 0 or .moderate > 0' npm-audit-report.json >/dev/null 2>&1; then
-              HIGH_COUNT=$(jq '.metadata.vulnerabilities.high // 0' npm-audit-report.json)
-              MODERATE_COUNT=$(jq '.metadata.vulnerabilities.moderate // 0' npm-audit-report.json)
-              echo "❌ Found vulnerabilities:"
-              echo "   HIGH: $HIGH_COUNT"
-              echo "   MODERATE: $MODERATE_COUNT"
-              echo ""
-              echo "🔧 Please run 'npm audit fix' locally."
-              echo "npm_status=fail" >> $GITHUB_OUTPUT
-            else
-              echo "✅ No HIGH/MODERATE vulnerabilities found."
-              echo "npm_status=pass" >> $GITHUB_OUTPUT
-            fi
-          else
-            echo "⚠️ No npm audit report generated."
-            echo "npm_status=pass" >> $GITHUB_OUTPUT
-          fi
-
-      - name: 📤 Upload NPM Report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: npm-security-report
-          path: frontend/npm-audit-report.json
-          if-no-files-found: ignore
-
-      - name: 🚦 Dependency Gate
-        if: always()
-        run: |
-          if [ "${{ steps.pip-analysis.outputs.pip_status }}" == "fail" ] || \
-             [ "${{ steps.npm-analysis.outputs.npm_status }}" == "fail" ]; then
-            echo "❌ Dependency scan failed."
-            exit 1
-          else
-            echo "✅ All dependency checks passed."
+          if [ ! -f npm-audit-report.json ]; then
+            echo "❌ npm audit report was not generated."
+            echo "npm_status=fail" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-  # ============================================================
-  # 2. SAST - STATIC APPLICATION SECURITY TESTING
-  # ============================================================
+          CRITICAL_COUNT=$(jq -r '.metadata.vulnerabilities.critical // 0' npm-audit-report.json)
+          HIGH_COUNT=$(jq -r '.metadata.vulnerabilities.high // 0' npm-audit-report.json)
+          MODERATE_COUNT=$(jq -r '.metadata.vulnerabilities.moderate // 0' npm-audit-report.json)
+
+          echo "npm audit results:"
+          echo "  Critical: $CRITICAL_COUNT"
+          echo "  High:     $HIGH_COUNT"
+          echo "  Moderate: $MODERATE_COUNT"
+
+          if [ "$CRITICAL_COUNT" -gt 0 ] || \
+             [ "$HIGH_COUNT" -gt 0 ] || \
+             [ "$MODERATE_COUNT" -gt 0 ]; then
+
+            echo "❌ CRITICAL/HIGH/MODERATE npm vulnerabilities detected."
+            echo "npm_status=fail" >> "$GITHUB_OUTPUT"
+          else
+            echo "✅ No CRITICAL/HIGH/MODERATE npm vulnerabilities detected."
+            echo "npm_status=pass" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload npm audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit-report
+          path: frontend/npm-audit-report.json
+          if-no-files-found: warn
+
+      # --------------------------------------------------------
+      # Dependency Security Gate
+      # --------------------------------------------------------
+      - name: Dependency Security Gate
+        if: always()
+        run: |
+          PIP_STATUS="${{ steps.pip-analysis.outputs.pip_status }}"
+          NPM_STATUS="${{ steps.npm-analysis.outputs.npm_status }}"
+
+          echo "========================================"
+          echo "Dependency Security Gate"
+          echo "========================================"
+          echo "pip-audit: $PIP_STATUS"
+          echo "npm audit: $NPM_STATUS"
+          echo "========================================"
+
+          if [ "$PIP_STATUS" = "fail" ] || [ "$NPM_STATUS" = "fail" ]; then
+            echo "❌ Dependency security gate failed."
+            exit 1
+          fi
+
+          echo "✅ Dependency security gate passed."
+
+
+  # ==========================================================
+  # SAST - Bandit
+  # ==========================================================
   sast:
-    name: 🔍 SAST Scan (Bandit)
+    name: Static Application Security Testing
     runs-on: ubuntu-latest
-    timeout-minutes: 15
 
     steps:
-      - name: 🔽 Checkout Code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: 🐍 Setup Python
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: '3.11'
 
-      - name: 📦 Install Bandit with SARIF support
+      - name: Install Bandit
         run: |
-          python -m pip install "bandit[sarif]"
+          python -m pip install --upgrade pip
+          pip install "bandit[sarif]"
 
-      - name: 🔍 Run Bandit Security Scan
+      - name: Run Bandit SARIF scan
         id: bandit-scan
-        working-directory: backend
-        continue-on-error: true
         run: |
-          bandit -r app/ -f sarif -o bandit-report.sarif
-          bandit -r app/ -f html -o bandit-report.html
-          bandit -r app/ -f json -o bandit-report.json
+          bandit \
+            -r backend/app/ \
+            -f sarif \
+            -o bandit-report.sarif \
+            --severity-level medium || true
 
-      - name: 📊 Analyze Bandit Results
+      - name: Run Bandit JSON scan
+        id: bandit-json
+        run: |
+          bandit \
+            -r backend/app/ \
+            -f json \
+            -o bandit-report.json \
+            --severity-level medium || true
+
+      - name: Run Bandit HTML report
+        if: always()
+        run: |
+          bandit \
+            -r backend/app/ \
+            -f html \
+            -o bandit-report.html \
+            --severity-level medium || true
+
+      - name: Analyze Bandit results
         id: bandit-analysis
-        working-directory: backend
         run: |
-          echo "============================================================"
-          echo "🔍 BANDIT SECURITY ANALYSIS"
-          echo "============================================================"
-
-          HIGH_COUNT=$(jq '.results | map(select(.issue_severity == "HIGH")) | length' bandit-report.json 2>/dev/null || echo "0")
-          MEDIUM_COUNT=$(jq '.results | map(select(.issue_severity == "MEDIUM")) | length' bandit-report.json 2>/dev/null || echo "0")
-
-          echo "📊 Findings Summary:"
-          echo "   HIGH:   $HIGH_COUNT"
-          echo "   MEDIUM: $MEDIUM_COUNT"
-          echo "============================================================"
-
-          if [ "$HIGH_COUNT" -gt 0 ] || [ "$MEDIUM_COUNT" -gt 0 ]; then
-            echo ""
-            echo "❌ HIGH/MEDIUM vulnerabilities found."
-            echo "bandit_status=fail" >> $GITHUB_OUTPUT
-          else
-            echo ""
-            echo "✅ No HIGH or MEDIUM vulnerabilities found."
-            echo "bandit_status=pass" >> $GITHUB_OUTPUT
-          fi
-
-      - name: 📤 Upload Bandit Reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: bandit-report
-          path: |
-            backend/bandit-report.sarif
-            backend/bandit-report.html
-            backend/bandit-report.json
-          if-no-files-found: ignore
-
-      - name: 📤 Upload Bandit SARIF to GitHub Security
-        if: always() && hashFiles('backend/bandit-report.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v4
-        with:
-          sarif_file: backend/bandit-report.sarif
-          category: bandit-sast
-
-      - name: 🚦 Bandit Gate
-        if: always()
-        run: |
-          if [ "${{ steps.bandit-analysis.outputs.bandit_status }}" == "fail" ]; then
-            echo "❌ Bandit found HIGH/MEDIUM vulnerabilities."
-            exit 1
-          else
-            echo "✅ Bandit passed all checks."
+          if [ ! -f bandit-report.json ]; then
+            echo "❌ Bandit report was not generated."
+            echo "bandit_status=fail" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-  # ============================================================
-  # 3. CONTAINER SCANNING
-  # ============================================================
+          HIGH_COUNT=$(jq '[.results[]? | select(.issue_severity == "HIGH")] | length' bandit-report.json)
+          MEDIUM_COUNT=$(jq '[.results[]? | select(.issue_severity == "MEDIUM")] | length' bandit-report.json)
+
+          echo "Bandit results:"
+          echo "  High:   $HIGH_COUNT"
+          echo "  Medium: $MEDIUM_COUNT"
+
+          if [ "$HIGH_COUNT" -gt 0 ] || [ "$MEDIUM_COUNT" -gt 0 ]; then
+            echo "❌ Bandit found HIGH/MEDIUM security issues."
+            echo "bandit_status=fail" >> "$GITHUB_OUTPUT"
+          else
+            echo "✅ No HIGH/MEDIUM Bandit issues detected."
+            echo "bandit_status=pass" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload Bandit SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: bandit-report.sarif
+          category: bandit
+
+      - name: Upload Bandit reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-reports
+          path: |
+            bandit-report.sarif
+            bandit-report.json
+            bandit-report.html
+          if-no-files-found: warn
+
+      - name: SAST Security Gate
+        if: always()
+        run: |
+          BANDIT_STATUS="${{ steps.bandit-analysis.outputs.bandit_status }}"
+
+          echo "========================================"
+          echo "SAST Security Gate"
+          echo "========================================"
+          echo "Bandit: $BANDIT_STATUS"
+          echo "========================================"
+
+          if [ "$BANDIT_STATUS" = "fail" ]; then
+            echo "❌ SAST security gate failed."
+            exit 1
+          fi
+
+          echo "✅ SAST security gate passed."
+
+
+  # ==========================================================
+  # Container Security Scan
+  # ==========================================================
   container-scan:
-    name: 🐳 Container Scan (Trivy)
+    name: Container Security Scan
     runs-on: ubuntu-latest
-    timeout-minutes: 20
 
     steps:
-      - name: 🔽 Checkout Code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: 🐳 Set up Docker Buildx
+      - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: 🏗️ Build RAG Image
+      # --------------------------------------------------------
+      # Build RAG Image
+      # --------------------------------------------------------
+      - name: Build RAG image
         run: |
-          docker build -t customer-support-rag:scan -f backend/docker/Dockerfile.rag ./backend
+          docker build \
+            -t customer-support-rag:scan \
+            -f backend/docker/Dockerfile.rag \
+            ./backend
 
-      - name: 🏗️ Build API Image
+      # --------------------------------------------------------
+      # Build API Image
+      # --------------------------------------------------------
+      - name: Build API image
         run: |
-          docker build -t customer-support-api:scan -f backend/docker/Dockerfile.backend ./backend
+          docker build \
+            -t customer-support-api:scan \
+            -f backend/docker/Dockerfile.backend \
+            ./backend
 
-      - name: 🏗️ Build Frontend Image
+      # --------------------------------------------------------
+      # Build Frontend Image
+      # --------------------------------------------------------
+      - name: Build Frontend image
         run: |
-          docker build -t customer-support-frontend:scan -f frontend/Dockerfile.frontend ./frontend
+          docker build \
+            -t customer-support-frontend:scan \
+            -f frontend/Dockerfile.frontend \
+            ./frontend
 
-      # ============================================================
-      # 🔍 Trivy Scan - RAG (SARIF + JSON)
-      # ============================================================
-      - name: 🔍 Scan RAG Image (SARIF)
+      # ========================================================
+      # Trivy - RAG
+      # ========================================================
+      - name: Trivy scan - RAG
         id: trivy-rag
-        uses: aquasecurity/trivy-action@v0.36.0
         continue-on-error: true
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: customer-support-rag:scan
           format: sarif
           output: trivy-rag.sarif
-          severity: CRITICAL,HIGH
-          exit-code: 1
+          severity: CRITICAL,HIGH,MEDIUM
+          exit-code: '1'
+          ignore-unfixed: false
 
-      - name: 🔍 Scan RAG Image (JSON)
-        id: trivy-rag-json
-        continue-on-error: true
-        run: |
-          trivy image \
-            --format json \
-            --output trivy-rag.json \
-            --severity CRITICAL,HIGH \
-            customer-support-rag:scan || true
-
-      # ============================================================
-      # 🔍 Trivy Scan - API (SARIF + JSON)
-      # ============================================================
-      - name: 🔍 Scan API Image (SARIF)
-        id: trivy-api
+      - name: Trivy JSON - RAG
+        if: always()
         uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: customer-support-rag:scan
+          format: json
+          output: trivy-rag.json
+          severity: CRITICAL,HIGH,MEDIUM
+          exit-code: '0'
+          ignore-unfixed: false
+
+      # ========================================================
+      # Trivy - API
+      # ========================================================
+      - name: Trivy scan - API
+        id: trivy-api
         continue-on-error: true
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: customer-support-api:scan
           format: sarif
           output: trivy-api.sarif
-          severity: CRITICAL,HIGH
-          exit-code: 1
+          severity: CRITICAL,HIGH,MEDIUM
+          exit-code: '1'
+          ignore-unfixed: false
 
-      - name: 🔍 Scan API Image (JSON)
-        id: trivy-api-json
-        continue-on-error: true
-        run: |
-          trivy image \
-            --format json \
-            --output trivy-api.json \
-            --severity CRITICAL,HIGH \
-            customer-support-api:scan || true
-
-      # ============================================================
-      # 🔍 Trivy Scan - Frontend (SARIF + JSON)
-      # ============================================================
-      - name: 🔍 Scan Frontend Image (SARIF)
-        id: trivy-frontend
+      - name: Trivy JSON - API
+        if: always()
         uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: customer-support-api:scan
+          format: json
+          output: trivy-api.json
+          severity: CRITICAL,HIGH,MEDIUM
+          exit-code: '0'
+          ignore-unfixed: false
+
+      # ========================================================
+      # Trivy - Frontend
+      # ========================================================
+      - name: Trivy scan - Frontend
+        id: trivy-frontend
         continue-on-error: true
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: customer-support-frontend:scan
           format: sarif
           output: trivy-frontend.sarif
-          severity: CRITICAL,HIGH
-          exit-code: 1
+          severity: CRITICAL,HIGH,MEDIUM
+          exit-code: '1'
+          ignore-unfixed: false
 
-      - name: 🔍 Scan Frontend Image (JSON)
-        id: trivy-frontend-json
-        continue-on-error: true
+      - name: Trivy JSON - Frontend
+        if: always()
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: customer-support-frontend:scan
+          format: json
+          output: trivy-frontend.json
+          severity: CRITICAL,HIGH,MEDIUM
+          exit-code: '0'
+          ignore-unfixed: false
+
+      # ========================================================
+      # Display Trivy Findings
+      # ========================================================
+      - name: Analyze Trivy findings
+        if: always()
         run: |
-          trivy image \
-            --format json \
-            --output trivy-frontend.json \
-            --severity CRITICAL,HIGH \
-            customer-support-frontend:scan || true
+          echo "========================================"
+          echo "Trivy Security Findings"
+          echo "========================================"
 
-      # ============================================================
-      # 📊 Extract Full CVE Details from JSON
-      # ============================================================
-      - name: 📊 Extract Full CVE Details
-        id: trivy-extract
-        run: |
-          echo "============================================================"
-          echo "🐳 TRIVY VULNERABILITY DETAILS (Full)"
-          echo "============================================================"
-
-          for json_file in trivy-rag.json trivy-api.json trivy-frontend.json; do
+          for json_file in \
+            trivy-rag.json \
+            trivy-api.json \
+            trivy-frontend.json
+          do
             if [ -f "$json_file" ]; then
               echo ""
-              echo "📁 $(basename "$json_file" .json):"
-              echo "------------------------------------------------------------"
+              echo "----------------------------------------"
+              echo "File: $json_file"
+              echo "----------------------------------------"
 
-              # ✅ استخراج: CVE, Package, Installed, Fixed, Severity, Status
-              jq -r '.Results[]?.Vulnerabilities[]? |
+              jq -r '
+                .Results[]?.Vulnerabilities[]? |
                 {
                   cve: .VulnerabilityID,
                   severity: .Severity,
@@ -356,36 +444,41 @@ jobs:
                   status: .Status,
                   title: .Title
                 } |
-                "   🔴 [\(.severity)] \(.cve)\n      📦 Package: \(.package)\n      📌 Installed: \(.installed)\n      ✅ Fixed: \(.fixed)\n      📊 Status: \(.status // "N/A")\n      💬 \(.title // "")\n"' "$json_file" 2>/dev/null | head -100 || true
+                "🔴 [\(.severity)] \(.cve)\n   📦 Package: \(.package)\n   📌 Installed: \(.installed)\n   ✅ Fixed: \(.fixed // "N/A")\n   📊 Status: \(.status // "N/A")\n   💬 \(.title // "")\n"
+              ' "$json_file" | head -150 || true
+            else
+              echo "⚠️ $json_file was not generated."
             fi
           done
-          echo "============================================================"
 
-      # ============================================================
-      # 📤 Upload Reports
-      # ============================================================
-      - name: 📤 Upload Trivy SARIF - RAG
-        if: always() && hashFiles('trivy-rag.sarif') != ''
+      # ========================================================
+      # Upload Trivy SARIF
+      # ========================================================
+      - name: Upload RAG Trivy SARIF
+        if: always()
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-rag.sarif
           category: trivy-rag
 
-      - name: 📤 Upload Trivy SARIF - API
-        if: always() && hashFiles('trivy-api.sarif') != ''
+      - name: Upload API Trivy SARIF
+        if: always()
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-api.sarif
           category: trivy-api
 
-      - name: 📤 Upload Trivy SARIF - Frontend
-        if: always() && hashFiles('trivy-frontend.sarif') != ''
+      - name: Upload Frontend Trivy SARIF
+        if: always()
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-frontend.sarif
           category: trivy-frontend
 
-      - name: 📤 Upload Trivy Reports
+      # ========================================================
+      # Upload Trivy Reports
+      # ========================================================
+      - name: Upload Trivy reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -397,91 +490,75 @@ jobs:
             trivy-api.json
             trivy-frontend.sarif
             trivy-frontend.json
-          if-no-files-found: ignore
+          if-no-files-found: warn
 
-      # ============================================================
-      # 🚦 Trivy Security Gate
-      # ============================================================
-      - name: 🚦 Trivy Security Gate
+      # ========================================================
+      # Container Security Gate
+      # ========================================================
+      - name: Container Security Gate
         if: always()
         run: |
-          echo "============================================================"
-          echo "🐳 TRIVY CONTAINER SCAN RESULTS"
-          echo "============================================================"
-          echo "   RAG Image:      ${{ steps.trivy-rag.outcome }}"
-          echo "   API Image:      ${{ steps.trivy-api.outcome }}"
-          echo "   Frontend Image: ${{ steps.trivy-frontend.outcome }}"
-          echo "============================================================"
+          RAG_STATUS="${{ steps.trivy-rag.outcome }}"
+          API_STATUS="${{ steps.trivy-api.outcome }}"
+          FRONTEND_STATUS="${{ steps.trivy-frontend.outcome }}"
 
-          if [[ "${{ steps.trivy-rag.outcome }}" == "failure" || \
-                "${{ steps.trivy-api.outcome }}" == "failure" || \
-                "${{ steps.trivy-frontend.outcome }}" == "failure" ]]; then
+          echo "========================================"
+          echo "Container Security Gate"
+          echo "========================================"
+          echo "RAG Image:      $RAG_STATUS"
+          echo "API Image:      $API_STATUS"
+          echo "Frontend Image: $FRONTEND_STATUS"
+          echo "========================================"
+
+          if [ "$RAG_STATUS" = "failure" ] || \
+             [ "$RAG_STATUS" = "skipped" ] || \
+             [ "$API_STATUS" = "failure" ] || \
+             [ "$API_STATUS" = "skipped" ] || \
+             [ "$FRONTEND_STATUS" = "failure" ] || \
+             [ "$FRONTEND_STATUS" = "skipped" ]; then
+
             echo "❌ Container vulnerabilities found."
-            echo "🔍 Check the 'Extract Full CVE Details' step above for details."
             exit 1
           fi
 
-          if [[ "${{ steps.trivy-rag.outcome }}" == "skipped" || \
-                "${{ steps.trivy-api.outcome }}" == "skipped" || \
-                "${{ steps.trivy-frontend.outcome }}" == "skipped" ]]; then
-            echo "⚠️ One or more Trivy scans were skipped."
-            echo "❌ Security gate cannot pass when a required container scan was not executed."
-            exit 1
-          fi
+          echo "✅ Container security gate passed."
 
-          echo "✅ All container scans completed successfully."
-          echo "   No CRITICAL/HIGH vulnerabilities found."
 
-  # ============================================================
-  # 4. SECURITY GATE
-  # ============================================================
+  # ==========================================================
+  # Final Security Gate
+  # ==========================================================
   security-gate:
-    name: 🚦 Security Gate
+    name: Final Security Gate
     runs-on: ubuntu-latest
+
     needs:
       - dependency-scan
       - sast
       - container-scan
+
     if: always()
 
     steps:
-      - name: 🔍 Evaluate All Security Results
+      - name: Evaluate security jobs
         run: |
-          echo "============================================================"
-          echo "🚦 SECURITY GATE - Final Decision"
-          echo "============================================================"
-          echo ""
-          echo "📊 Job Results:"
-          echo "   Dependency Scan: ${{ needs.dependency-scan.result }}"
-          echo "   SAST Scan:       ${{ needs.sast.result }}"
-          echo "   Container Scan:  ${{ needs.container-scan.result }}"
-          echo ""
+          DEPENDENCY_STATUS="${{ needs.dependency-scan.result }}"
+          SAST_STATUS="${{ needs.sast.result }}"
+          CONTAINER_STATUS="${{ needs.container-scan.result }}"
 
-          if [ "${{ needs.dependency-scan.result }}" != "success" ] || \
-             [ "${{ needs.sast.result }}" != "success" ] || \
-             [ "${{ needs.container-scan.result }}" != "success" ]; then
-            echo "❌ Security checks failed."
-            echo ""
-            echo "🔧 Action Required:"
-            echo "   1. Download security reports from artifacts"
-            echo "   2. Review and fix vulnerabilities"
-            echo "   3. Re-run the workflow"
+          echo "========================================"
+          echo "Final Security Gate"
+          echo "========================================"
+          echo "Dependency Scan: $DEPENDENCY_STATUS"
+          echo "SAST:             $SAST_STATUS"
+          echo "Container Scan:   $CONTAINER_STATUS"
+          echo "========================================"
+
+          if [ "$DEPENDENCY_STATUS" != "success" ] || \
+             [ "$SAST_STATUS" != "success" ] || \
+             [ "$CONTAINER_STATUS" != "success" ]; then
+
+            echo "❌ Final security gate failed."
             exit 1
           fi
 
-          echo "✅ All security checks passed successfully."
-
-      - name: 📢 Security Summary
-        if: always()
-        run: |
-          echo "============================================================"
-          echo "📊 SECURITY SCAN SUMMARY"
-          echo "============================================================"
-          echo ""
-          echo "✅ Python Dependencies: Checked"
-          echo "✅ NPM Dependencies:   Checked"
-          echo "✅ SAST (Bandit):      Checked"
-          echo "✅ Container (Trivy):  Checked"
-          echo ""
-          echo "🔍 SARIF reports uploaded to GitHub Security tab (CodeQL v4)"
-          echo "============================================================"
+          echo "✅ All security checks passed."

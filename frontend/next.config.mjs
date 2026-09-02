@@ -1,7 +1,12 @@
 // frontend/next.config.mjs
+
 /** @type {import('next').NextConfig} */
+
 const nextConfig = {
   reactStrictMode: true,
+
+  // Generate a minimal standalone production bundle
+  output: 'standalone',
 
   async rewrites() {
     return [
