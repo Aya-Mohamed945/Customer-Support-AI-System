@@ -1,36 +1,49 @@
 # backend/docker/Dockerfile.rag
-FROM python:3.11-slim
+# ============================================================
+# Base Image - Python 3.11 slim with security updates
+# ============================================================
+FROM python:3.11-slim-bookworm
 
-WORKDIR /app
-
-# Install system dependencies with retry
+# ============================================================
+# System Dependencies (minimal, only what's needed)
+# ============================================================
 RUN apt-get update -o Acquire::Check-Valid-Until=false && \
     apt-get install -y --no-install-recommends \
-    build-essential \
     curl \
     && rm -rf /var/lib/apt/lists/*
+
+# ============================================================
+# Application Setup
+# ============================================================
+WORKDIR /app
 
 # Copy requirements first (for better caching)
 COPY requirements.txt .
 COPY requirements-dev.txt .
 
-# ✅ Install with extended timeout and retries
+# Install Python dependencies
 RUN pip install --no-cache-dir --timeout 600 --retries 20 -r requirements.txt
 
 # Copy application code
 COPY . .
 
-# Create directories for models and data
+# Create necessary directories
 RUN mkdir -p models data/processed logs
 
-# Environment variables
+# ============================================================
+# Non-root User (Security Best Practice)
+# ============================================================
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
+
+# ============================================================
+# Environment & Runtime
+# ============================================================
 ENV HF_HUB_ENABLE_HF_TRANSFER=0
 ENV HF_HUB_DOWNLOAD_TIMEOUT=600
 ENV PYTHONUNBUFFERED=1
 ENV LOG_LEVEL=INFO
 
-# Expose ports
 EXPOSE 8001
 
-# Run RAG service
 CMD ["python", "run_rag.py"]

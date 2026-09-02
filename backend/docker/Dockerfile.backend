@@ -1,35 +1,48 @@
 # backend/docker/Dockerfile.backend
-FROM python:3.11-slim
+# ============================================================
+# Base Image - Python 3.11 slim with security updates
+# ============================================================
+FROM python:3.11-slim-bookworm
 
-WORKDIR /app
-
-# Install system dependencies with retry
+# ============================================================
+# System Dependencies (minimal, only what's needed)
+# ============================================================
 RUN apt-get update -o Acquire::Check-Valid-Until=false && \
     apt-get install -y --no-install-recommends \
-    build-essential \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements
+# ============================================================
+# Application Setup
+# ============================================================
+WORKDIR /app
+
+# Copy requirements first (for better caching)
 COPY requirements.txt .
 COPY requirements-dev.txt .
 
-# ✅ Install with extended timeout and retries
+# Install Python dependencies
 RUN pip install --no-cache-dir --timeout 600 --retries 20 -r requirements.txt
 
 # Copy application code
 COPY . .
 
-# Create directories
+# Create necessary directories
 RUN mkdir -p models data/processed logs
 
-# Environment variables
+# ============================================================
+# Non-root User (Security Best Practice)
+# ============================================================
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
+
+# ============================================================
+# Environment & Runtime
+# ============================================================
 ENV PYTHONUNBUFFERED=1
 ENV LOG_LEVEL=INFO
 ENV RAG_URL=http://rag:8001
 
-# Expose ports
 EXPOSE 8000
 
-# Run the application
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
