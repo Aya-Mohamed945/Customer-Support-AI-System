@@ -3,62 +3,62 @@
 # Customer Support AI - Backend API
 # ============================================================
 
-FROM python:3.11-slim-trixie
+FROM python:3.11-slim-bookworm
 
 WORKDIR /app
 
 # ============================================================
-# SYSTEM SECURITY UPDATES
+# System Updates
 # ============================================================
 RUN apt-get update && \
     apt-get upgrade -y && \
-    apt-get purge -y \
-        python3-msgpack \
-        python3-setuptools \
-        2>/dev/null || true && \
-    apt-get autoremove -y && \
     rm -rf /var/lib/apt/lists/*
 
 # ============================================================
-# PYTHON DEPENDENCIES
+# Python Dependencies
 # ============================================================
 COPY requirements.txt .
 
-RUN pip install \
-    --no-cache-dir \
+RUN pip install --no-cache-dir \
     --timeout 600 \
     --retries 20 \
     -r requirements.txt
 
 # ============================================================
-# SECURITY TOOLCHAIN
-# Exact versions are intentional.
+# Security-Sensitive Dependency Pins
+# Keep these exact versions aligned with requirements.txt.
 # ============================================================
-RUN pip install \
-    --no-cache-dir \
-    --upgrade \
+RUN pip install --no-cache-dir \
     "pip>=26.2.0" \
     "setuptools==83.0.0" \
     "wheel>=0.46.2" \
     "jaraco.context>=6.1.0"
 
 # ============================================================
-# SECURITY DEPENDENCY VERIFICATION
+# Verify Security-Sensitive Package Versions
 # ============================================================
-RUN python -c "exec('import importlib.metadata as m\nexpected={\"msgpack\":\"1.2.1\",\"setuptools\":\"83.0.0\"}\nprint(\"=== SECURITY DEPENDENCY VERIFICATION ===\")\nfor pkg, expected_version in expected.items():\n    actual=m.version(pkg)\n    print(f\"{pkg}=={actual}\")\n    if actual != expected_version:\n        raise SystemExit(f\"ERROR: {pkg}=={actual}; expected {expected_version}\")\nprint(\"=== SECURITY DEPENDENCIES VERIFIED ===\")')"
+RUN python -c "\
+import importlib.metadata as metadata; \
+assert metadata.version('msgpack') == '1.2.1', \
+'Unexpected msgpack version: ' + metadata.version('msgpack'); \
+assert metadata.version('setuptools') == '83.0.0', \
+'Unexpected setuptools version: ' + metadata.version('setuptools'); \
+print('msgpack=' + metadata.version('msgpack')); \
+print('setuptools=' + metadata.version('setuptools')); \
+print('Security-sensitive dependency versions verified.')"
 
 # ============================================================
-# COPY APPLICATION
+# Application Files
 # ============================================================
 COPY . .
 
 # ============================================================
-# APPLICATION DIRECTORIES
+# Required Directories
 # ============================================================
 RUN mkdir -p models data/processed logs
 
 # ============================================================
-# NON-ROOT USER
+# Non-Root User
 # ============================================================
 RUN useradd -m -u 1000 appuser && \
     chown -R appuser:appuser /app
@@ -66,12 +66,15 @@ RUN useradd -m -u 1000 appuser && \
 USER appuser
 
 # ============================================================
-# ENVIRONMENT
+# Runtime Environment
 # ============================================================
 ENV PYTHONUNBUFFERED=1
 ENV LOG_LEVEL=INFO
 ENV RAG_URL=http://rag:8001
 
+# ============================================================
+# Service
+# ============================================================
 EXPOSE 8000
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
