@@ -526,7 +526,11 @@ jobs:
                   title: .Title
                 } |
                 "🔴 [\(.severity)] \(.cve)\n   📦 Package: \(.package)\n   📌 Installed: \(.installed)\n   ✅ Fixed: \(.fixed // "N/A")\n   📊 Status: \(.status // "N/A")\n   💬 \(.title // "")\n"
-              ' "$json_file" | head -150 || true
+              ' "$json_file" > "trivy-findings.txt"
+
+              # Display only the first 150 findings without
+              # piping jq directly into head (avoids Broken pipe).
+              sed -n '1,150p' trivy-findings.txt
 
             else
               echo "⚠️ $json_file was not generated."
