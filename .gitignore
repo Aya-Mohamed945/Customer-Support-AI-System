@@ -1,20 +1,20 @@
-"backend/venv/" 
-"backend/__pycache__/" 
-"backend/models/*.pkl" 
-"backend/models/*.joblib" 
-"backend/models/*.faiss" 
-"backend/data/processed/*.csv" 
-"backend/data/*.json" 
-"*.pyc" 
-"*.log" 
-"logs/" 
-"backend/metrics_data.json" 
-"backend/predictions_export.csv" 
-"backend/users.json" 
-"frontend/node_modules/" 
-"frontend/.next/" 
-".DS_Store" 
-"Thumbs.db" 
+"backend/venv/"
+"backend/__pycache__/"
+"backend/models/*.pkl"
+"backend/models/*.joblib"
+"backend/models/*.faiss"
+"backend/data/processed/*.csv"
+"backend/data/*.json"
+"*.pyc"
+"*.log"
+"logs/"
+"backend/metrics_data.json"
+"backend/predictions_export.csv"
+"backend/users.json"
+"frontend/node_modules/"
+"frontend/.next/"
+".DS_Store"
+"Thumbs.db"
 .env
 .env.local
 .env.production
@@ -44,6 +44,17 @@ backend/models/*.joblib
 backend/models/*.faiss
 !backend/models/.gitkeep
 
+# Required ML model artifacts
+!backend/models/category_encoder.pkl
+!backend/models/category_model_final.pkl
+!backend/models/category_vectorizer_final.pkl
+!backend/models/priority_encoder.pkl
+!backend/models/priority_model_final.pkl
+!backend/models/priority_vectorizer_final.pkl
+!backend/models/sentiment_encoder.pkl
+!backend/models/sentiment_model_final.pkl
+!backend/models/sentiment_vectorizer_final.pkl
+
 backend/data/processed/*.csv
 backend/data/*.json
 !backend/data/raw/*.csv
@@ -63,8 +74,9 @@ htmlcov/
 
 *.tmp
 
-notebooks/"backend/data/raw/" 
-"backend/data/faq_combined.csv" 
-"backend/catboost_info/" 
-"!backend/models/.gitkeep" 
-"backend/models/" 
+notebooks/"backend/data/raw/"
+"backend/data/faq_combined.csv"
+"backend/catboost_info/"
+"!backend/models/.gitkeep"
+"backend/models/"
+
