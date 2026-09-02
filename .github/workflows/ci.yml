@@ -28,6 +28,66 @@ jobs:
         with:
           lfs: true
 
+      - name: 🔍 Verify Git LFS Models
+        run: |
+          echo "============================================================"
+          echo "🔍 GIT LFS MODEL VERIFICATION"
+          echo "============================================================"
+
+          echo ""
+          echo "📦 Git LFS tracked files:"
+          git lfs ls-files
+
+          echo ""
+          echo "📁 Checking model files:"
+          cd backend
+
+          python - <<'PY'
+          from pathlib import Path
+
+          models = [
+            "models/priority_model_final.pkl",
+            "models/priority_vectorizer_final.pkl",
+            "models/priority_encoder.pkl",
+            "models/category_model_final.pkl",
+            "models/category_vectorizer_final.pkl",
+            "models/category_encoder.pkl",
+            "models/sentiment_model_final.pkl",
+            "models/sentiment_vectorizer_final.pkl",
+            "models/sentiment_encoder.pkl",
+          ]
+
+          lfs_pointer = b"version https://git-lfs.github.com/spec/v1"
+
+          failed = False
+
+          for model in models:
+            path = Path(model)
+
+            if not path.exists():
+              print(f"❌ MISSING: {model}")
+              failed = True
+              continue
+
+            data = path.read_bytes()
+
+            print(f"📄 {model}")
+            print(f"   Size: {len(data):,} bytes")
+            print(f"   First bytes: {data[:50]!r}")
+
+            if data.startswith(lfs_pointer):
+              print("   ❌ LFS POINTER DETECTED")
+              failed = True
+            else:
+              print("   ✅ Real model file detected")
+
+          if failed:
+            print("\n❌ Git LFS model verification failed!")
+            raise SystemExit(1)
+
+          print("\n✅ All model files are real binary files.")
+          PY
+
       - name: 🐍 Setup Python
         uses: actions/setup-python@v5
         with:
@@ -172,6 +232,8 @@ jobs:
     steps:
       - name: 🔽 Checkout Code
         uses: actions/checkout@v4
+        with:
+          lfs: true
 
       - name: 📦 Setup Node.js
         uses: actions/setup-node@v4
@@ -219,6 +281,8 @@ jobs:
     steps:
       - name: 🔽 Checkout Code
         uses: actions/checkout@v4
+        with:
+          lfs: true
 
       - name: 🐍 Setup Python
         uses: actions/setup-python@v5
@@ -289,6 +353,8 @@ jobs:
     steps:
       - name: 🔽 Checkout Code
         uses: actions/checkout@v4
+        with:
+          lfs: true
 
       - name: 🐳 Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
