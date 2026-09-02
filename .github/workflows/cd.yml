@@ -4,6 +4,7 @@ name: CD - Continuous Deployment
 on:
   push:
     branches: [main]
+
   workflow_dispatch:
     inputs:
       environment:
@@ -16,21 +17,33 @@ on:
           - production
 
 env:
-  DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
   AWS_REGION: us-east-1
   ECR_REPOSITORY: customer-support-ai
 
 jobs:
+
+  # ==========================================================
+  # 🚀 STAGING DEPLOYMENT
+  # ==========================================================
   deploy-staging:
     name: 🚀 Deploy to Staging
     runs-on: ubuntu-latest
+
     if: github.event_name == 'push' || github.event.inputs.environment == 'staging'
+
     environment: staging
 
     steps:
+
+      # --------------------------------------------------------
+      # Checkout
+      # --------------------------------------------------------
       - name: 🔽 Checkout Code
         uses: actions/checkout@v4
 
+      # --------------------------------------------------------
+      # AWS Authentication
+      # --------------------------------------------------------
       - name: 🔑 Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -38,27 +51,77 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
+      # --------------------------------------------------------
+      # ECR Login
+      # --------------------------------------------------------
       - name: 🔑 Log in to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: 🏗️ Build and Push to ECR
+      # --------------------------------------------------------
+      # Build & Push Images
+      # --------------------------------------------------------
+      - name: 🏗️ Build and Push Images to ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: staging
         run: |
-          # RAG Service
-          docker build -t ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}-rag:staging \
-            -f backend/docker/Dockerfile.rag ./backend
-          docker push ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}-rag:staging
+          set -e
 
-          # API Service
-          docker build -t ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}-api:staging \
-            -f backend/docker/Dockerfile.backend ./backend
-          docker push ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}-api:staging
+          echo "============================================================"
+          echo "🐳 BUILDING STAGING IMAGES"
+          echo "============================================================"
 
-          # Frontend Service
-          docker build -t ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}-frontend:staging \
-            -f frontend/Dockerfile.frontend ./frontend
-          docker push ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}-frontend:staging
+          # ----------------------------------------------------
+          # RAG
+          # ----------------------------------------------------
+          echo ""
+          echo "🔹 Building RAG image..."
 
+          docker build \
+            -t $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}-rag:$IMAGE_TAG \
+            -f backend/docker/Dockerfile.rag \
+            ./backend
+
+          docker push \
+            $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}-rag:$IMAGE_TAG
+
+          # ----------------------------------------------------
+          # API
+          # ----------------------------------------------------
+          echo ""
+          echo "🔹 Building API image..."
+
+          docker build \
+            -t $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}-api:$IMAGE_TAG \
+            -f backend/docker/Dockerfile.backend \
+            ./backend
+
+          docker push \
+            $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}-api:$IMAGE_TAG
+
+          # ----------------------------------------------------
+          # Frontend
+          # ----------------------------------------------------
+          echo ""
+          echo "🔹 Building Frontend image..."
+
+          docker build \
+            -t $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}-frontend:$IMAGE_TAG \
+            -f frontend/Dockerfile.frontend \
+            ./frontend
+
+          docker push \
+            $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}-frontend:$IMAGE_TAG
+
+          echo ""
+          echo "============================================================"
+          echo "✅ ALL STAGING IMAGES PUSHED SUCCESSFULLY"
+          echo "============================================================"
+
+      # --------------------------------------------------------
+      # Deploy to Staging Server
+      # --------------------------------------------------------
       - name: 🚀 Deploy to Staging Server
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -66,22 +129,112 @@ jobs:
           username: ${{ secrets.STAGING_USERNAME }}
           key: ${{ secrets.STAGING_SSH_KEY }}
           script: |
+            set -e
+
             cd /app/customer-support-ai
-            docker-compose pull
-            docker-compose up -d --force-recreate
+
+            echo "============================================================"
+            echo "🚀 DEPLOYING STAGING"
+            echo "============================================================"
+
+            echo ""
+            echo "🔑 Logging in to Amazon ECR..."
+
+            aws ecr get-login-password --region us-east-1 | \
+              docker login \
+              --username AWS \
+              --password-stdin \
+              $(aws sts get-caller-identity \
+                --query Account \
+                --output text).dkr.ecr.us-east-1.amazonaws.com
+
+            echo ""
+            echo "📥 Pulling latest staging images..."
+
+            export ECR_REGISTRY=$(aws sts get-caller-identity \
+              --query Account \
+              --output text).dkr.ecr.us-east-1.amazonaws.com
+
+            export IMAGE_TAG=staging
+
+            docker compose pull
+
+            echo ""
+            echo "🔄 Restarting services..."
+
+            docker compose up -d --force-recreate --remove-orphans
+
+            echo ""
+            echo "🧹 Cleaning unused Docker resources..."
+
             docker system prune -f
 
+            echo ""
+            echo "============================================================"
+            echo "✅ STAGING DEPLOYMENT COMPLETED"
+            echo "============================================================"
+
+      # --------------------------------------------------------
+      # Staging Health Check
+      # --------------------------------------------------------
+      - name: 🩺 Staging Health Check
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USERNAME }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          script: |
+            set -e
+
+            echo "============================================================"
+            echo "🩺 STAGING HEALTH CHECK"
+            echo "============================================================"
+
+            echo ""
+            echo "🔹 Checking RAG service..."
+
+            curl -f http://localhost:8001/health
+
+            echo ""
+            echo "🔹 Checking API service..."
+
+            curl -f http://localhost:8000/health
+
+            echo ""
+            echo "🔹 Checking running containers..."
+
+            docker compose ps
+
+            echo ""
+            echo "============================================================"
+            echo "✅ STAGING HEALTH CHECK PASSED"
+            echo "============================================================"
+
+
+  # ==========================================================
+  # 🚀 PRODUCTION DEPLOYMENT
+  # ==========================================================
   deploy-production:
     name: 🚀 Deploy to Production
     runs-on: ubuntu-latest
+
     if: github.event.inputs.environment == 'production'
+
     environment: production
+
     needs: deploy-staging
 
     steps:
+
+      # --------------------------------------------------------
+      # Checkout
+      # --------------------------------------------------------
       - name: 🔽 Checkout Code
         uses: actions/checkout@v4
 
+      # --------------------------------------------------------
+      # AWS Authentication
+      # --------------------------------------------------------
       - name: 🔑 Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -89,27 +242,77 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
+      # --------------------------------------------------------
+      # ECR Login
+      # --------------------------------------------------------
       - name: 🔑 Log in to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: 🏗️ Build and Push to ECR (Production)
+      # --------------------------------------------------------
+      # Build & Push Production Images
+      # --------------------------------------------------------
+      - name: 🏗️ Build and Push Images to ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: production
         run: |
-          # RAG Service
-          docker build -t ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}-rag:latest \
-            -f backend/docker/Dockerfile.rag ./backend
-          docker push ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}-rag:latest
+          set -e
 
-          # API Service
-          docker build -t ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}-api:latest \
-            -f backend/docker/Dockerfile.backend ./backend
-          docker push ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}-api:latest
+          echo "============================================================"
+          echo "🐳 BUILDING PRODUCTION IMAGES"
+          echo "============================================================"
 
-          # Frontend Service
-          docker build -t ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}-frontend:latest \
-            -f frontend/Dockerfile.frontend ./frontend
-          docker push ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}-frontend:latest
+          # ----------------------------------------------------
+          # RAG
+          # ----------------------------------------------------
+          echo ""
+          echo "🔹 Building RAG image..."
 
+          docker build \
+            -t $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}-rag:$IMAGE_TAG \
+            -f backend/docker/Dockerfile.rag \
+            ./backend
+
+          docker push \
+            $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}-rag:$IMAGE_TAG
+
+          # ----------------------------------------------------
+          # API
+          # ----------------------------------------------------
+          echo ""
+          echo "🔹 Building API image..."
+
+          docker build \
+            -t $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}-api:$IMAGE_TAG \
+            -f backend/docker/Dockerfile.backend \
+            ./backend
+
+          docker push \
+            $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}-api:$IMAGE_TAG
+
+          # ----------------------------------------------------
+          # Frontend
+          # ----------------------------------------------------
+          echo ""
+          echo "🔹 Building Frontend image..."
+
+          docker build \
+            -t $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}-frontend:$IMAGE_TAG \
+            -f frontend/Dockerfile.frontend \
+            ./frontend
+
+          docker push \
+            $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}-frontend:$IMAGE_TAG
+
+          echo ""
+          echo "============================================================"
+          echo "✅ ALL PRODUCTION IMAGES PUSHED SUCCESSFULLY"
+          echo "============================================================"
+
+      # --------------------------------------------------------
+      # Deploy to Production Server
+      # --------------------------------------------------------
       - name: 🚀 Deploy to Production Server
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -117,13 +320,83 @@ jobs:
           username: ${{ secrets.PRODUCTION_USERNAME }}
           key: ${{ secrets.PRODUCTION_SSH_KEY }}
           script: |
+            set -e
+
             cd /app/customer-support-ai
-            docker-compose pull
-            docker-compose up -d --force-recreate
+
+            echo "============================================================"
+            echo "🚀 DEPLOYING PRODUCTION"
+            echo "============================================================"
+
+            echo ""
+            echo "🔑 Logging in to Amazon ECR..."
+
+            aws ecr get-login-password --region us-east-1 | \
+              docker login \
+              --username AWS \
+              --password-stdin \
+              $(aws sts get-caller-identity \
+                --query Account \
+                --output text).dkr.ecr.us-east-1.amazonaws.com
+
+            echo ""
+            echo "📥 Pulling production images..."
+
+            export ECR_REGISTRY=$(aws sts get-caller-identity \
+              --query Account \
+              --output text).dkr.ecr.us-east-1.amazonaws.com
+
+            export IMAGE_TAG=production
+
+            docker compose pull
+
+            echo ""
+            echo "🔄 Restarting services..."
+
+            docker compose up -d --force-recreate --remove-orphans
+
+            echo ""
+            echo "🧹 Cleaning unused Docker resources..."
+
             docker system prune -f
 
-      - name: ✅ Health Check
-        run: |
-          sleep 30
-          curl -f https://api.customer-support-ai.com/health || exit 1
-          curl -f https://rag.customer-support-ai.com/health || exit 1
+            echo ""
+            echo "============================================================"
+            echo "✅ PRODUCTION DEPLOYMENT COMPLETED"
+            echo "============================================================"
+
+      # --------------------------------------------------------
+      # Production Health Check
+      # --------------------------------------------------------
+      - name: 🩺 Production Health Check
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PRODUCTION_HOST }}
+          username: ${{ secrets.PRODUCTION_USERNAME }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          script: |
+            set -e
+
+            echo "============================================================"
+            echo "🩺 PRODUCTION HEALTH CHECK"
+            echo "============================================================"
+
+            echo ""
+            echo "🔹 Checking RAG service..."
+
+            curl -f http://localhost:8001/health
+
+            echo ""
+            echo "🔹 Checking API service..."
+
+            curl -f http://localhost:8000/health
+
+            echo ""
+            echo "🔹 Checking running containers..."
+
+            docker compose ps
+
+            echo ""
+            echo "============================================================"
+            echo "✅ PRODUCTION HEALTH CHECK PASSED"
+            echo "============================================================"
