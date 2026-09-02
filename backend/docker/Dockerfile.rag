@@ -1,15 +1,13 @@
-# backend/docker/Dockerfile.rag
 # ============================================================
-# Base Image - Python 3.11 slim with security updates
+# Base Image
 # ============================================================
-FROM python:3.11-slim-bookworm
+FROM python:3.11-slim-trixie
 
 # ============================================================
-# System Dependencies (minimal, only what's needed)
+# System Dependencies
 # ============================================================
 RUN apt-get update -o Acquire::Check-Valid-Until=false && \
     apt-get install -y --no-install-recommends \
-    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # ============================================================
@@ -17,23 +15,21 @@ RUN apt-get update -o Acquire::Check-Valid-Until=false && \
 # ============================================================
 WORKDIR /app
 
-# Copy requirements first (for better caching)
 COPY requirements.txt .
 COPY requirements-dev.txt .
 
-# Install Python dependencies
 RUN pip install --no-cache-dir --timeout 600 --retries 20 -r requirements.txt
 
-# Copy application code
 COPY . .
 
-# Create necessary directories
 RUN mkdir -p models data/processed logs
 
 # ============================================================
-# Non-root User (Security Best Practice)
+# Non-root User
 # ============================================================
-RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+RUN useradd -m -u 1000 appuser && \
+    chown -R appuser:appuser /app
+
 USER appuser
 
 # ============================================================
