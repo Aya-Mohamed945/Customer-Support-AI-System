@@ -74,7 +74,7 @@ jobs:
 
       - name: 📤 Upload Python Report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: python-security-report
           path: pip-audit-report.txt
@@ -127,7 +127,7 @@ jobs:
 
       - name: 📤 Upload NPM Report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: npm-security-report
           path: frontend/npm-audit-report.json
@@ -203,7 +203,7 @@ jobs:
 
       - name: 📤 Upload Bandit Reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: bandit-report
           path: |
@@ -705,7 +705,7 @@ jobs:
 
       - name: 📤 Upload Trivy Reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: trivy-reports
           path: |

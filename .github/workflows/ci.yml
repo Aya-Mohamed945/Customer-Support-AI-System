@@ -60,7 +60,7 @@ jobs:
           mypy app/ --config-file=pyproject.toml --ignore-missing-imports || true
 
       - name: 📊 Upload Lint Report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: backend-lint-report
@@ -113,7 +113,7 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: 📤 Upload Test Results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: backend-test-results
@@ -190,13 +190,13 @@ jobs:
           npm run build
 
       - name: 📤 Upload Build Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: frontend-build
           path: frontend/.next/
 
       - name: 📊 Upload Frontend Coverage
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: frontend-coverage
@@ -351,7 +351,7 @@ jobs:
           severity: "CRITICAL,HIGH"
 
       - name: 📤 Upload Trivy Report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: trivy-report
