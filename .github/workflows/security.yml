@@ -388,10 +388,10 @@ jobs:
             fi
           done
 
-      # ============================================================
-      # 🐳 FRONTEND BASE IMAGE DIAGNOSTICS
-      # ============================================================
-      - name: 🐳 Analyze Frontend Base Image
+      # ========================================================
+      # Frontend Base Image Diagnostics
+      # ========================================================
+      - name: Analyze Frontend Base Image
         if: always()
         run: |
           echo "============================================================"
@@ -399,43 +399,48 @@ jobs:
           echo "============================================================"
 
           echo ""
-          echo "------------------------------------------------------------"
           echo "📌 Node version inside final image:"
-          docker run --rm customer-support-frontend:scan node --version || true
+          docker run --rm customer-support-frontend:scan \
+            node --version || true
 
           echo ""
-          echo "📌 npm version inside final image:"
-          docker run --rm customer-support-frontend:scan npm --version || true
+          echo "📌 npm availability inside final image:"
+          docker run --rm customer-support-frontend:scan \
+            sh -c 'command -v npm || echo "npm not installed (expected for production image)"'
 
           echo ""
-          echo "------------------------------------------------------------"
           echo "📌 Alpine version:"
-          docker run --rm customer-support-frontend:scan cat /etc/alpine-release || true
+          docker run --rm customer-support-frontend:scan \
+            cat /etc/alpine-release || true
 
           echo ""
           echo "📌 OpenSSL version:"
-          docker run --rm customer-support-frontend:scan openssl version || true
+          docker run --rm customer-support-frontend:scan \
+            sh -c 'openssl version -a' || true
 
           echo ""
           echo "📌 Installed OpenSSL packages:"
-          docker run --rm customer-support-frontend:scan apk info -v 2>/dev/null | grep -E '^(openssl|libcrypto3|libssl3)-' || true
+          docker run --rm customer-support-frontend:scan \
+            sh -c 'apk info -v 2>/dev/null | grep -E "^(openssl|libcrypto3|libssl3)-" || true'
 
           echo ""
-          echo "------------------------------------------------------------"
-          echo "📌 FINAL IMAGE NODE MODULE CHECK"
-          echo "------------------------------------------------------------"
+          echo "============================================================"
+          echo "📦 FINAL IMAGE NODE MODULE CHECK"
+          echo "============================================================"
 
-          docker run --rm customer-support-frontend:scan sh -c '
-            for pkg in brace-expansion ip-address tar undici; do
-              echo ""
-              echo "🔎 Package: $pkg"
-              if [ -f "node_modules/$pkg/package.json" ]; then
-                echo "   Version: $(node -e "console.log(require(\"./node_modules/$pkg/package.json\").version)" 2>/dev/null || echo "Unknown")"
-              else
-                echo "   Not present at top-level node_modules"
-              fi
-            done
-          ' || true
+          docker run --rm customer-support-frontend:scan \
+            sh -c '
+              for pkg in brace-expansion ip-address tar undici; do
+                echo ""
+                echo "🔎 Package: $pkg"
+
+                if [ -f "node_modules/$pkg/package.json" ]; then
+                  node -e "console.log(require(\"./node_modules/$pkg/package.json\").version)" 2>/dev/null || true
+                else
+                  echo "Not present at top-level node_modules"
+                fi
+              done
+            ' || true
 
       # ============================================================
       # 📊 Extract Full CVE Details from JSON

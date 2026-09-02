@@ -1,28 +1,52 @@
 # backend/docker/Dockerfile.backend
-# ============================================================
-# Base Image
-# ============================================================
-FROM python:3.11-slim-trixie
 
 # ============================================================
-# System Dependencies
+# Base Image - Python 3.11 slim Trixie
 # ============================================================
-RUN apt-get update -o Acquire::Check-Valid-Until=false && \
-    apt-get install -y --no-install-recommends \
-    && rm -rf /var/lib/apt/lists/*
+FROM python:3.11-slim-trixie
 
 # ============================================================
 # Application Setup
 # ============================================================
 WORKDIR /app
 
+# ============================================================
+# Copy Requirements
+# ============================================================
 COPY requirements.txt .
 COPY requirements-dev.txt .
 
-RUN pip install --no-cache-dir --timeout 600 --retries 20 -r requirements.txt
+# ============================================================
+# Install Python Dependencies
+# ============================================================
+RUN pip install \
+    --no-cache-dir \
+    --timeout 600 \
+    --retries 20 \
+    -r requirements.txt
 
+# ============================================================
+# Upgrade Python Packaging Tools
+#
+# These tools are included in the base Python image and
+# are scanned by Trivy. Upgrade them to patched versions.
+# ============================================================
+RUN pip install \
+    --no-cache-dir \
+    --upgrade \
+    "pip>=26.2.0" \
+    "setuptools>=83.0.0" \
+    "wheel>=0.46.2" \
+    "jaraco.context>=6.1.0"
+
+# ============================================================
+# Copy Application Code
+# ============================================================
 COPY . .
 
+# ============================================================
+# Create Required Directories
+# ============================================================
 RUN mkdir -p models data/processed logs
 
 # ============================================================
@@ -34,7 +58,7 @@ RUN useradd -m -u 1000 appuser && \
 USER appuser
 
 # ============================================================
-# Environment & Runtime
+# Environment
 # ============================================================
 ENV PYTHONUNBUFFERED=1
 ENV LOG_LEVEL=INFO

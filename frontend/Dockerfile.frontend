@@ -1,3 +1,4 @@
+#Dockerfile.frontend
 # ============================================================
 # Builder Stage
 # ============================================================
@@ -5,22 +6,34 @@ FROM node:24-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files first for better Docker layer caching
-COPY package*.json ./
+# ------------------------------------------------------------
+# Update Alpine security packages
+# ------------------------------------------------------------
+RUN apk update && \
+    apk upgrade --no-cache openssl libcrypto3 libssl3
 
-# Copy Next.js configuration files
+# ------------------------------------------------------------
+# Copy package files
+# ------------------------------------------------------------
+COPY package*.json ./
 COPY next.config.mjs ./
 COPY postcss.config.mjs ./
 COPY tailwind.config.ts ./
 COPY tsconfig.json ./
 
-# Install dependencies, including dev dependencies required for build
+# ------------------------------------------------------------
+# Install dependencies
+# ------------------------------------------------------------
 RUN npm ci
 
+# ------------------------------------------------------------
 # Copy application source
+# ------------------------------------------------------------
 COPY . .
 
-# Build Next.js application
+# ------------------------------------------------------------
+# Build application
+# ------------------------------------------------------------
 RUN npm run build
 
 
@@ -29,9 +42,29 @@ RUN npm run build
 # ============================================================
 FROM node:24-alpine AS runner
 
-# ============================================================
+# ------------------------------------------------------------
+# Update Alpine security packages
+# ------------------------------------------------------------
+RUN apk update && \
+    apk upgrade --no-cache openssl libcrypto3 libssl3
+
+# ------------------------------------------------------------
+# Remove npm from runtime image
+#
+# The production application runs with:
+#     node server.js
+#
+# npm is only required during the builder stage.
+# Removing it prevents npm's own transitive packages
+# (tar, brace-expansion, ip-address, etc.) from remaining
+# in the production image.
+# ------------------------------------------------------------
+RUN rm -rf /usr/local/lib/node_modules/npm && \
+    rm -f /usr/local/bin/npm /usr/local/bin/npx
+
+# ------------------------------------------------------------
 # Non-root User
-# ============================================================
+# ------------------------------------------------------------
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nextjs -u 1001
 
@@ -39,13 +72,16 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
-# ============================================================
-# Standalone Next.js Runtime
-# ============================================================
+# ------------------------------------------------------------
+# Copy Next.js standalone production output
+# ------------------------------------------------------------
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
+# ------------------------------------------------------------
+# Run as non-root user
+# ------------------------------------------------------------
 USER nextjs
 
 EXPOSE 3000
