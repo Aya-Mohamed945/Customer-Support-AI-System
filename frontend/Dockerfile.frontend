@@ -1,9 +1,9 @@
+# frontend/Dockerfile.frontend
 # ============================================================
 # Builder Stage
 # ============================================================
-FROM node:20-alpine@sha256:80925abcfb10d1886c547d24960fb3bcc82b12702a635fbb8da1cf74f34ffb54 AS builder
+FROM node:20-alpine AS builder
 
-# ✅ تحديث OpenSSL في Alpine
 RUN apk update && apk upgrade openssl libcrypto3
 
 WORKDIR /app
@@ -27,9 +27,8 @@ RUN npm run build
 # ============================================================
 # Runtime Stage
 # ============================================================
-FROM node:20-alpine@sha256:80925abcfb10d1886c547d24960fb3bcc82b12702a635fbb8da1cf74f34ffb54 AS runner
+FROM node:20-alpine AS runner
 
-# ✅ تحديث OpenSSL في Alpine
 RUN apk update && apk upgrade openssl libcrypto3
 
 # ============================================================
