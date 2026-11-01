@@ -3,7 +3,7 @@
 # Customer Support AI - RAG Service
 # ============================================================
 
-FROM python:3.11-slim-bookworm
+FROM python:3.15-slim-bookworm
 
 WORKDIR /app
 
